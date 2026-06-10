@@ -83,9 +83,8 @@ Install dependencies first with `pnpm install`.
 
 **Added by the test-scaffolding phase (P3):**
 
-- `pnpm test` / `pnpm test:watch` — frontend unit/component tests (Vitest)
 - `pnpm test:coverage` — frontend tests with the 90% gate
-- `pnpm test:rust` — Rust integration tests
+- `pnpm test:rust:coverage` — Rust integration tests
 - `pnpm test:e2e` — Playwright E2E
 - `pnpm test:all` — everything
 
