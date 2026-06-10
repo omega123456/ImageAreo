@@ -1,0 +1,28 @@
+@import "tailwindcss";
+@import "@skeletonlabs/skeleton";
+@import "@skeletonlabs/skeleton/themes/cerberus";
+@plugin "tailwind-scrollbar";
+
+/* Tell Tailwind where to scan for class usage. */
+@source "../src";
+
+/* Activate the Skeleton theme on the document root. */
+@layer base {
+  :root {
+    --theme-cerberus: true;
+    color-scheme: light dark;
+  }
+}
+
+/*
+  Canvas-surround theme tokens (Styling Rule 3).
+  A single dual-tone named token resolves to a dark achromatic neutral in dark
+  mode and a medium-light neutral (never pure white) in light mode. The
+  `light-dark()` function keys off the CSS `color-scheme` property — declared as
+  `color-scheme: light dark` on `:root` above — so the token follows the OS
+  appearance (not Tailwind's `dark` variant directly).
+  Used by name as `bg-canvas-surround` / `text-canvas-surround` — never bracket hex.
+*/
+@theme {
+  --color-canvas-surround: light-dark(oklch(0.86 0.005 250), oklch(0.18 0.01 250));
+}
