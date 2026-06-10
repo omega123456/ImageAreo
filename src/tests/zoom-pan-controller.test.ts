@@ -1,0 +1,400 @@
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import {
+  ZoomPanController,
+  MIN_ZOOM,
+  MAX_ZOOM,
+  type ViewerLike,
+  type ControllerDeps,
+} from "../lib/utils/zoom-pan-controller";
+
+const CONTAINER_W = 400;
+const CONTAINER_H = 300;
+
+function makeViewer(overrides: Partial<ViewerLike> = {}): ViewerLike {
+  return {
+    naturalWidth: 800,
+    naturalHeight: 600,
+    zoom: 1,
+    pan: { x: 0, y: 0 },
+    rotation: 0,
+    fitMode: "fit",
+    status: "ready",
+    ...overrides,
+  };
+}
+
+/**
+ * A controllable rAF stub: frames are queued and flushed manually so animated
+ * tweens run deterministically. `now()` is driven by a manually advanced clock.
+ */
+function makeDeps() {
+  let clock = 0;
+  const queue: Array<(t: number) => void> = [];
+  const deps: ControllerDeps = {
+    now: () => clock,
+    requestFrame: (cb) => {
+      queue.push(cb);
+      return queue.length; // non-zero handle
+    },
+    cancelFrame: vi.fn(),
+  };
+  return {
+    deps,
+    advance(ms: number): void {
+      clock += ms;
+    },
+    /** Flush all currently-queued frames once at the current clock. */
+    flush(): void {
+      const pending = queue.splice(0);
+      for (const cb of pending) cb(clock);
+    },
+    /** Run frames until the queue drains, advancing the clock each step. */
+    run(stepMs = 30, maxSteps = 100): void {
+      let steps = 0;
+      while (queue.length > 0 && steps < maxSteps) {
+        clock += stepMs;
+        const pending = queue.splice(0);
+        for (const cb of pending) cb(clock);
+        steps += 1;
+      }
+    },
+  };
+}
+
+function makeContainer(): HTMLDivElement {
+  const el = document.createElement("div");
+  el.getBoundingClientRect = () =>
+    ({
+      left: 0,
+      top: 0,
+      right: CONTAINER_W,
+      bottom: CONTAINER_H,
+      width: CONTAINER_W,
+      height: CONTAINER_H,
+      x: 0,
+      y: 0,
+      toJSON() {},
+    }) as DOMRect;
+  document.body.appendChild(el);
+  return el;
+}
+
+describe("ZoomPanController", () => {
+  let container: HTMLDivElement;
+
+  beforeEach(() => {
+    container = makeContainer();
+  });
+
+  it("computes a fit zoom that fits the image in the container", () => {
+    const viewer = makeViewer();
+    const c = new ZoomPanController(container, viewer);
+    // min(400/800, 300/600) = 0.5
+    expect(c.fitZoom()).toBeCloseTo(0.5);
+    c.destroy();
+  });
+
+  it("fitZoom returns 1 when image or container has no size", () => {
+    const c1 = new ZoomPanController(
+      container,
+      makeViewer({ naturalWidth: 0 }),
+    );
+    expect(c1.fitZoom()).toBe(1);
+    c1.destroy();
+
+    const empty = document.createElement("div");
+    empty.getBoundingClientRect = () =>
+      ({ width: 0, height: 0, left: 0, top: 0 }) as DOMRect;
+    const c2 = new ZoomPanController(empty, makeViewer());
+    expect(c2.fitZoom()).toBe(1);
+    c2.destroy();
+  });
+
+  it("fitToScreen sets fit zoom, centers pan and marks fitMode", () => {
+    const viewer = makeViewer({ zoom: 4, pan: { x: 30, y: 30 }, fitMode: "free" });
+    const c = new ZoomPanController(container, viewer);
+    c.fitToScreen();
+    expect(viewer.zoom).toBeCloseTo(0.5);
+    expect(viewer.pan).toEqual({ x: 0, y: 0 });
+    expect(viewer.fitMode).toBe("fit");
+    c.destroy();
+  });
+
+  it("setActualSize goes to 100% centered", () => {
+    const viewer = makeViewer({ zoom: 0.5, fitMode: "fit" });
+    const c = new ZoomPanController(container, viewer);
+    c.setActualSize();
+    expect(viewer.zoom).toBe(1);
+    expect(viewer.pan).toEqual({ x: 0, y: 0 });
+    expect(viewer.fitMode).toBe("actual");
+    c.destroy();
+  });
+
+  it("ignores actions when status is not ready", () => {
+    const viewer = makeViewer({ status: "loading", zoom: 1 });
+    const c = new ZoomPanController(container, viewer);
+    c.fitToScreen();
+    c.setActualSize();
+    c.zoomIn();
+    c.zoomOut();
+    expect(viewer.zoom).toBe(1);
+    expect(viewer.fitMode).toBe("fit");
+    c.destroy();
+  });
+
+  it("wheel zoom is continuous, cursor-anchored and sets fitMode free", () => {
+    const viewer = makeViewer({ zoom: 1 });
+    const c = new ZoomPanController(container, viewer);
+    const before = viewer.zoom;
+    container.dispatchEvent(
+      new WheelEvent("wheel", {
+        deltaY: -100,
+        clientX: 200,
+        clientY: 150,
+        cancelable: true,
+      }),
+    );
+    expect(viewer.zoom).toBeGreaterThan(before);
+    expect(viewer.fitMode).toBe("free");
+    c.destroy();
+  });
+
+  it("wheel zoom anchored at the center leaves pan centered", () => {
+    const viewer = makeViewer({ zoom: 1 });
+    const c = new ZoomPanController(container, viewer);
+    // Anchor at the exact container center => pan stays at origin.
+    container.dispatchEvent(
+      new WheelEvent("wheel", {
+        deltaY: -100,
+        clientX: CONTAINER_W / 2,
+        clientY: CONTAINER_H / 2,
+        cancelable: true,
+      }),
+    );
+    expect(viewer.pan.x).toBeCloseTo(0);
+    expect(viewer.pan.y).toBeCloseTo(0);
+    c.destroy();
+  });
+
+  it("wheel zoom does nothing when not ready", () => {
+    const viewer = makeViewer({ status: "error", zoom: 1 });
+    const c = new ZoomPanController(container, viewer);
+    container.dispatchEvent(
+      new WheelEvent("wheel", { deltaY: -100, cancelable: true }),
+    );
+    expect(viewer.zoom).toBe(1);
+    c.destroy();
+  });
+
+  it("wheel zoom clamps to MAX_ZOOM and stops at the bound", () => {
+    const viewer = makeViewer({ zoom: MAX_ZOOM });
+    const c = new ZoomPanController(container, viewer);
+    container.dispatchEvent(
+      new WheelEvent("wheel", { deltaY: -500, cancelable: true }),
+    );
+    expect(viewer.zoom).toBe(MAX_ZOOM);
+    c.destroy();
+  });
+
+  it("wheel zoom clamps to MIN_ZOOM when zooming out hard", () => {
+    const viewer = makeViewer({ zoom: MIN_ZOOM });
+    const c = new ZoomPanController(container, viewer);
+    container.dispatchEvent(
+      new WheelEvent("wheel", { deltaY: 500, cancelable: true }),
+    );
+    expect(viewer.zoom).toBe(MIN_ZOOM);
+    c.destroy();
+  });
+
+  it("zoomIn animates toward a larger zoom via injected rAF", () => {
+    const { deps, run } = makeDeps();
+    const viewer = makeViewer({ zoom: 1 });
+    const c = new ZoomPanController(container, viewer, deps);
+    c.zoomIn();
+    run();
+    expect(viewer.zoom).toBeGreaterThan(1);
+    expect(viewer.fitMode).toBe("free");
+    c.destroy();
+  });
+
+  it("zoomOut animates toward a smaller zoom", () => {
+    const { deps, run } = makeDeps();
+    const viewer = makeViewer({ zoom: 4 });
+    const c = new ZoomPanController(container, viewer, deps);
+    c.zoomOut();
+    run();
+    expect(viewer.zoom).toBeLessThan(4);
+    c.destroy();
+  });
+
+  it("a new discrete step cancels the previous animation", () => {
+    const { deps } = makeDeps();
+    const viewer = makeViewer({ zoom: 1 });
+    const c = new ZoomPanController(container, viewer, deps);
+    c.zoomIn();
+    c.zoomIn();
+    expect(deps.cancelFrame).toHaveBeenCalled();
+    c.destroy();
+  });
+
+  it("drag pans the image and sets fitMode free", () => {
+    const { deps } = makeDeps();
+    const viewer = makeViewer({ zoom: 2 });
+    const c = new ZoomPanController(container, viewer, deps);
+    container.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        button: 0,
+        pointerId: 1,
+        clientX: 100,
+        clientY: 100,
+      }),
+    );
+    container.dispatchEvent(
+      new PointerEvent("pointermove", {
+        pointerId: 1,
+        clientX: 130,
+        clientY: 120,
+      }),
+    );
+    expect(viewer.pan.x).toBeGreaterThan(0);
+    expect(viewer.pan.y).toBeGreaterThan(0);
+    expect(viewer.fitMode).toBe("free");
+    c.destroy();
+  });
+
+  it("ignores non-primary mouse buttons on pointerdown", () => {
+    const viewer = makeViewer({ zoom: 2 });
+    const c = new ZoomPanController(container, viewer);
+    container.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        button: 2,
+        pointerId: 1,
+        clientX: 100,
+        clientY: 100,
+      }),
+    );
+    container.dispatchEvent(
+      new PointerEvent("pointermove", {
+        pointerId: 1,
+        clientX: 200,
+        clientY: 200,
+      }),
+    );
+    expect(viewer.pan).toEqual({ x: 0, y: 0 });
+    c.destroy();
+  });
+
+  it("applies momentum on a fast release", () => {
+    const { deps, advance, run } = makeDeps();
+    const viewer = makeViewer({ zoom: 4 });
+    const c = new ZoomPanController(container, viewer, deps);
+
+    container.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        button: 0,
+        pointerId: 1,
+        clientX: 100,
+        clientY: 100,
+      }),
+    );
+    advance(10);
+    container.dispatchEvent(
+      new PointerEvent("pointermove", {
+        pointerId: 1,
+        clientX: 160,
+        clientY: 100,
+      }),
+    );
+    const panBeforeRelease = viewer.pan.x;
+    container.dispatchEvent(
+      new PointerEvent("pointerup", { pointerId: 1, clientX: 160, clientY: 100 }),
+    );
+    run();
+    expect(viewer.pan.x).toBeGreaterThan(panBeforeRelease);
+    c.destroy();
+  });
+
+  it("does not start momentum on a slow release", () => {
+    const { deps, advance } = makeDeps();
+    const viewer = makeViewer({ zoom: 4 });
+    const c = new ZoomPanController(container, viewer, deps);
+    container.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        button: 0,
+        pointerId: 1,
+        clientX: 100,
+        clientY: 100,
+      }),
+    );
+    advance(1000);
+    container.dispatchEvent(
+      new PointerEvent("pointermove", {
+        pointerId: 1,
+        clientX: 101,
+        clientY: 100,
+      }),
+    );
+    const panX = viewer.pan.x;
+    container.dispatchEvent(
+      new PointerEvent("pointerup", { pointerId: 1, clientX: 101, clientY: 100 }),
+    );
+    expect(viewer.pan.x).toBe(panX);
+    c.destroy();
+  });
+
+  it("ignores pointermove for a different pointer id", () => {
+    const viewer = makeViewer({ zoom: 2 });
+    const c = new ZoomPanController(container, viewer);
+    container.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        button: 0,
+        pointerId: 1,
+        clientX: 100,
+        clientY: 100,
+      }),
+    );
+    container.dispatchEvent(
+      new PointerEvent("pointermove", {
+        pointerId: 99,
+        clientX: 200,
+        clientY: 200,
+      }),
+    );
+    expect(viewer.pan).toEqual({ x: 0, y: 0 });
+    c.destroy();
+  });
+
+  it("clamps pan so the image cannot be flung off-screen", () => {
+    const viewer = makeViewer({ zoom: 2 });
+    const c = new ZoomPanController(container, viewer);
+    container.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        button: 0,
+        pointerId: 1,
+        clientX: 0,
+        clientY: 0,
+      }),
+    );
+    container.dispatchEvent(
+      new PointerEvent("pointermove", {
+        pointerId: 1,
+        clientX: 100000,
+        clientY: 100000,
+      }),
+    );
+    // scaledW = 1600, container 400 => max offset (1600-400)/2 = 600.
+    expect(viewer.pan.x).toBeLessThanOrEqual(600);
+    expect(viewer.pan.y).toBeLessThanOrEqual(450);
+    c.destroy();
+  });
+
+  it("destroy detaches listeners so further events are ignored", () => {
+    const viewer = makeViewer({ zoom: 1 });
+    const c = new ZoomPanController(container, viewer);
+    c.destroy();
+    container.dispatchEvent(
+      new WheelEvent("wheel", { deltaY: -100, cancelable: true }),
+    );
+    expect(viewer.zoom).toBe(1);
+  });
+});

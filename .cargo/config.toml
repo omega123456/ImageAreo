@@ -1,0 +1,37 @@
+# Rust integration tests and llvm-cov settings (invoked via pnpm test:rust / test:rust:coverage).
+# Run from the repository root.
+# Requires cargo-nextest (https://nexte.st) and cargo-llvm-cov (https://github.com/taiki-e/cargo-llvm-cov).
+
+[alias]
+# Integration test targets for this crate (src-tauri/tests/*.rs). Add a `--test <name>`
+# pair here for each new integration suite as later phases (P4+) introduce them.
+imageareo-test-integration = [
+  "nextest",
+  "run",
+  "--manifest-path",
+  "src-tauri/Cargo.toml",
+  "--test",
+  "harness_smoke_integration",
+]
+
+# Coverage run with the 90% gate. `--ignore-filename-regex` drops OS-side-effect /
+# bootstrap code that cannot be asserted headlessly (per the P3 coverage-exclusion
+# policy): the Tauri launch hookup in lib.rs, main.rs, the test `common` helpers, and
+# the cargo registry. Pure logic added by later phases stays in the denominator.
+imageareo-llvm-cov = [
+  "llvm-cov",
+  "nextest",
+  "--summary-only",
+  "--ignore-filename-regex",
+  "src-tauri.*src.*lib\\.rs|src-tauri.*src.*main\\.rs|src-tauri.*tests.*common|cargo.*registry",
+  "--manifest-path",
+  "src-tauri/Cargo.toml",
+  "--test",
+  "harness_smoke_integration",
+  "--fail-under-lines",
+  "90",
+  "--fail-under-functions",
+  "90",
+  "--fail-under-regions",
+  "90",
+]

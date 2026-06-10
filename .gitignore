@@ -14,3 +14,10 @@ vite.config.ts.timestamp-*
 
 .agent
 .claude
+.pnpm-store
+coverage
+
+# Playwright
+/test-results
+/playwright-report
+.playwright-dev-port

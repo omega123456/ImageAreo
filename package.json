@@ -11,24 +11,38 @@
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "test": "vitest run --reporter=default",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage --reporter=default",
+    "test:rust": "cargo imageareo-test-integration",
+    "test:rust:coverage": "node scripts/run-rust-coverage.mjs",
+    "test:e2e": "node scripts/ensure-playwright-port.mjs && playwright test",
+    "test:all": "pnpm test:coverage && pnpm test:rust:coverage && pnpm test:e2e"
   },
   "dependencies": {
+    "@lucide/svelte": "^1.17.0",
     "@tauri-apps/api": "^2.11.0",
-    "@tauri-apps/plugin-dialog": "^2.7.1",
-    "@lucide/svelte": "^1.17.0"
+    "@tauri-apps/plugin-dialog": "^2.7.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@skeletonlabs/skeleton": "^4.15.2",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
     "@tailwindcss/vite": "^4.3.0",
     "@tauri-apps/cli": "^2.11.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/svelte": "^5.3.1",
+    "@testing-library/user-event": "^14.6.1",
+    "@vitest/coverage-v8": "^4.1.8",
+    "jsdom": "^29.1.1",
     "svelte": "^5.56.3",
     "svelte-check": "^4.6.0",
     "tailwind-scrollbar": "^4.0.2",
     "tailwindcss": "^4.3.0",
     "tslib": "^2.8.1",
     "typescript": "^6.0.3",
-    "vite": "^8.0.16"
+    "vite": "^8.0.16",
+    "vitest": "^4.1.8"
   }
 }
