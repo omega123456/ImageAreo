@@ -16,4 +16,6 @@ const portFile = path.join(root, ".playwright-dev-port");
 
 const port = await pickDevPort(DEV_SERVER_HOST);
 writeFileSync(portFile, `${port}\n`, "utf8");
-console.log(`Wrote port ${port} to .playwright-dev-port`);
+if (process.env.DEBUG_PLAYWRIGHT_PORT === "1") {
+  console.log(`Wrote port ${port} to .playwright-dev-port`);
+}

@@ -59,6 +59,15 @@ if (!HTMLElement.prototype.releasePointerCapture) {
   HTMLElement.prototype.releasePointerCapture = function () {};
 }
 
+if (typeof window !== "undefined") {
+  const internals = ((window as typeof window & { __TAURI_INTERNALS__?: Record<string, unknown> })
+    .__TAURI_INTERNALS__ ??= {});
+  if (typeof internals.convertFileSrc !== "function") {
+    internals.convertFileSrc = (path: string, protocol = "asset") =>
+      `${protocol}://${path}`;
+  }
+}
+
 afterEach(() => {
   cleanup();
 });

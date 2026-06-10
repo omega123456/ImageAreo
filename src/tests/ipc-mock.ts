@@ -24,7 +24,7 @@ import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
 import type { InvokeArgs } from "@tauri-apps/api/core";
 
-import { IPC_FIXTURES, type IpcHandler } from "./fixtures";
+import { IPC_FIXTURES, resetFixtureState, type IpcHandler } from "./fixtures";
 
 /** Per-test command overrides — take precedence over IPC_FIXTURES. */
 const _overrides = new Map<string, IpcHandler>();
@@ -82,6 +82,7 @@ export function overrideIpcCommands(
  */
 export function setupIpc(): void {
   beforeEach(() => {
+    resetFixtureState();
     mockIPC(
       (cmd: string, payload?: InvokeArgs) => {
         // Normalize the payload to a plain record; leave binary payloads as-is.
@@ -114,6 +115,7 @@ export function setupIpc(): void {
 
   afterEach(() => {
     ipc.reset();
+    resetFixtureState();
     clearMocks();
   });
 }

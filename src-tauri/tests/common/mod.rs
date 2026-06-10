@@ -9,6 +9,8 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
+use ::image::{DynamicImage, ImageFormat, Rgba, RgbaImage};
+
 /// A throwaway temporary directory plus convenience constructors for seeding it
 /// with fixture image files. Dropped automatically at the end of a test, which
 /// removes the directory tree.
@@ -50,4 +52,17 @@ impl Default for TempImageDir {
     fn default() -> Self {
         Self::new()
     }
+}
+
+pub fn write_dynamic_fixture(path: &Path, width: u32, height: u32, format: ImageFormat) {
+    let image = DynamicImage::ImageRgba8(RgbaImage::from_fn(width, height, |x, y| {
+        let r = ((x + 1) * 17) as u8;
+        let g = ((y + 1) * 29) as u8;
+        let b = ((x + y + 1) * 13) as u8;
+        Rgba([r, g, b, u8::MAX])
+    }));
+
+    image
+        .save_with_format(path, format)
+        .expect("fixture image should be written");
 }

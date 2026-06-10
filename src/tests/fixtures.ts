@@ -23,6 +23,13 @@ export type IpcHandler = (
   commandName?: string,
 ) => unknown;
 
+const STORE_RESOURCE_ID = 1;
+const storeState = new Map<string, unknown>();
+
+export function resetFixtureState(): void {
+  storeState.clear();
+}
+
 export const IPC_FIXTURES: Record<string, IpcHandler> = {
   // --- Tauri event system (handled by shouldMockEvents; here for completeness) ---
   "plugin:event|listen": (args) => args?.handler ?? null,
@@ -35,6 +42,45 @@ export const IPC_FIXTURES: Record<string, IpcHandler> = {
   // --- Tauri plugin: clipboard-manager ---
   "plugin:clipboard-manager|write-text": () => null,
   "plugin:clipboard-manager|read-text": () => "",
+
+  // --- Tauri plugin: store ---
+  "plugin:store|load": (args) => {
+    const defaults = (args?.options as { defaults?: Record<string, unknown> } | undefined)
+      ?.defaults;
+    if (defaults) {
+      for (const [key, value] of Object.entries(defaults)) {
+        if (!storeState.has(key)) {
+          storeState.set(key, value);
+        }
+      }
+    }
+    return STORE_RESOURCE_ID;
+  },
+  "plugin:store|get_store": () => STORE_RESOURCE_ID,
+  "plugin:store|get": (args) => {
+    const key = String(args?.key ?? "");
+    return [storeState.get(key), storeState.has(key)];
+  },
+  "plugin:store|set": (args) => {
+    storeState.set(String(args?.key ?? ""), args?.value);
+    return null;
+  },
+  "plugin:store|save": () => null,
+  "plugin:store|has": (args) => storeState.has(String(args?.key ?? "")),
+  "plugin:store|delete": (args) => storeState.delete(String(args?.key ?? "")),
+  "plugin:store|clear": () => {
+    storeState.clear();
+    return null;
+  },
+  "plugin:store|reset": () => {
+    storeState.clear();
+    return null;
+  },
+  "plugin:store|keys": () => [...storeState.keys()],
+  "plugin:store|values": () => [...storeState.values()],
+  "plugin:store|entries": () => [...storeState.entries()],
+  "plugin:store|length": () => storeState.size,
+  "plugin:store|reload": () => null,
 
   // --- Tauri plugin: opener ---
   "plugin:opener|open_path": () => null,

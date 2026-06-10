@@ -1,5 +1,15 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { viewer } from "../lib/stores/viewer.svelte";
+
+vi.mock("@tauri-apps/api/core", async () => {
+  const actual = await vi.importActual<typeof import("@tauri-apps/api/core")>(
+    "@tauri-apps/api/core",
+  );
+  return {
+    ...actual,
+    convertFileSrc: (path: string) => `asset://${path}`,
+  };
+});
 
 describe("viewer store", () => {
   beforeEach(() => {
@@ -8,6 +18,7 @@ describe("viewer store", () => {
 
   it("starts idle and empty", () => {
     expect(viewer.status).toBe("idle");
+    expect(viewer.path).toBeNull();
     expect(viewer.source).toBe("");
     expect(viewer.name).toBeNull();
     expect(viewer.zoom).toBe(1);
@@ -54,9 +65,24 @@ describe("viewer store", () => {
     viewer.setReady(100, 100);
     viewer.reset();
     expect(viewer.status).toBe("idle");
+    expect(viewer.path).toBeNull();
     expect(viewer.source).toBe("");
     expect(viewer.name).toBeNull();
     expect(viewer.naturalWidth).toBe(0);
     expect(viewer.naturalHeight).toBe(0);
+  });
+
+  it("openPath() resets zoom state before loading a native image", async () => {
+    viewer.zoom = 4;
+    viewer.pan = { x: 25, y: 15 };
+
+    await viewer.openPath("/photos/photo.jpg");
+
+    expect(viewer.path).toBe("/photos/photo.jpg");
+    expect(viewer.status).toBe("loading");
+    expect(viewer.name).toBe("photo.jpg");
+    expect(viewer.zoom).toBe(1);
+    expect(viewer.pan).toEqual({ x: 0, y: 0 });
+    expect(viewer.source).toContain("asset://");
   });
 });

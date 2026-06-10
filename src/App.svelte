@@ -1,9 +1,9 @@
 <script lang="ts">
   import { open } from "@tauri-apps/plugin-dialog";
-  import { convertFileSrc } from "@tauri-apps/api/core";
   import Toolbar from "./lib/components/Toolbar.svelte";
   import ImageViewer from "./lib/components/ImageViewer.svelte";
   import ZoomHud from "./lib/components/ZoomHud.svelte";
+  import { folder } from "./lib/stores/folder.svelte";
   import { viewer } from "./lib/stores/viewer.svelte";
   import { NATIVE_EXTENSIONS } from "./lib/utils/format";
   import type { ZoomPanController } from "./lib/utils/zoom-pan-controller";
@@ -17,13 +17,12 @@
       filters: [{ name: "Images", extensions: [...NATIVE_EXTENSIONS] }],
     });
     if (typeof selected !== "string") return;
-    openPath(selected);
+    await openPath(selected);
   }
 
-  function openPath(path: string): void {
-    const name = path.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || "Image";
-    // TODO(P9): route non-native formats through decode_image instead of convertFileSrc
-    viewer.load(convertFileSrc(path), name);
+  async function openPath(path: string): Promise<void> {
+    await folder.open(path);
+    await viewer.openPath(path);
   }
 
   function toggleFitActual(): void {

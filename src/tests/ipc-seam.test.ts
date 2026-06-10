@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { invoke } from "@tauri-apps/api/core";
 import { ipc } from "./ipc-mock";
+import { decodeImage, revealInFileManager, scanFolder } from "../lib/ipc";
 import { viewer } from "../lib/stores/viewer.svelte";
 
 /**
@@ -15,10 +15,10 @@ describe("IPC mock seam", () => {
   });
 
   it("serves a default fixture when no override is set", async () => {
-    const entries = (await invoke("scan_folder", {
+    const entries = await scanFolder({
       path: "/photos",
       sortOrder: "name",
-    })) as Array<{ path: string }>;
+    });
     expect(entries).toHaveLength(2);
     expect(entries[0].path).toBe("/photos/img1.jpg");
   });
@@ -32,11 +32,7 @@ describe("IPC mock seam", () => {
     }));
 
     // Simulate the viewer flow: decode then drive the store from the response.
-    const decoded = (await invoke("decode_image", { path: "/a.heic" })) as {
-      dataUrl: string;
-      width: number;
-      height: number;
-    };
+    const decoded = await decodeImage({ path: "/a.heic" });
     viewer.load(decoded.dataUrl, "a.heic");
     viewer.setReady(decoded.width, decoded.height);
 
@@ -47,11 +43,12 @@ describe("IPC mock seam", () => {
   });
 
   it("records call payloads for assertions", async () => {
-    await invoke("reveal_in_file_manager", { path: "/a.jpg" });
+    await revealInFileManager({ path: "/a.jpg" });
     expect(ipc.calls("reveal_in_file_manager")).toEqual([{ path: "/a.jpg" }]);
   });
 
   it("throws on an unmocked command so missing mocks fail loudly", async () => {
+    const { invoke } = await import("@tauri-apps/api/core");
     await expect(invoke("does_not_exist")).rejects.toThrow(
       /Unmocked Tauri IPC command/,
     );

@@ -7,6 +7,10 @@
  * zoom HUD. Later phases (P8/P9/P11/P14) extend this module — do not rewrite it.
  */
 
+import { convertFileSrc } from "@tauri-apps/api/core";
+
+import { isNativeFormat } from "../utils/format";
+
 export type FitMode = "fit" | "actual" | "free";
 export type ViewerStatus = "idle" | "loading" | "ready" | "error";
 export type Rotation = 0 | 90 | 180 | 270;
@@ -17,6 +21,8 @@ export interface Pan {
 }
 
 class ViewerStore {
+  /** Original filesystem path of the loaded image, when present. */
+  path = $state<string | null>(null);
   /** Resolved image source (asset URL for native; data URL for backend in P9). */
   source = $state<string>("");
   /** Human-readable name (filename) of the loaded image, for accessibility. */
@@ -53,6 +59,22 @@ class ViewerStore {
     this.status = "loading";
   }
 
+  /** Load a filesystem path through the current frontend routing rules. */
+  async openPath(path: string): Promise<void> {
+    this.path = path;
+    const name = path.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || "Image";
+
+    if (!isNativeFormat(path)) {
+      this.reset();
+      this.path = path;
+      this.name = name;
+      this.status = "error";
+      return;
+    }
+
+    this.load(convertFileSrc(path), name);
+  }
+
   /** Record intrinsic dimensions and mark the image ready to display. */
   setReady(naturalWidth: number, naturalHeight: number): void {
     this.naturalWidth = naturalWidth;
@@ -68,6 +90,7 @@ class ViewerStore {
   /** Clear the viewer back to the empty state. */
   reset(): void {
     this.resetTransform();
+    this.path = null;
     this.source = "";
     this.name = null;
     this.status = "idle";

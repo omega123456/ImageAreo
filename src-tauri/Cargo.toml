@@ -20,14 +20,25 @@ tauri-build = { version = "~2.6", features = [] }
 
 [dependencies]
 tauri = { version = "~2.11", features = ["protocol-asset"] }
+tauri-plugin-clipboard-manager = "~2.3"
 tauri-plugin-dialog = "~2.7"
+tauri-plugin-opener = "~2.5"
+base64 = "~0.22"
+exif = { package = "kamadak-exif", version = "0.6.1" }
+fast_image_resize = "5.1.2"
+heic = { version = "0.1.6", features = ["av1"] }
+image = { version = "0.25.10", default-features = false, features = ["avif", "bmp", "gif", "ico", "jpeg", "png", "tiff", "webp"] }
+jxl-oxide = "0.12.5"
+rawler = "0.7.2"
 serde = { version = "~1.0", features = ["derive"] }
 serde_json = "~1.0"
+tauri-plugin-store = "~2.4"
 
 [dev-dependencies]
 # Integration-test harness (P3). `tempfile` builds isolated fixture folders;
 # `tokio` test-util drives async command bodies; the `tauri` test feature lets
 # integration tests construct a mock app context.
+filetime = "~0.2"
 tempfile = "~3.10"
 tokio = { version = "~1", features = ["macros", "rt", "test-util"] }
 tauri = { version = "~2.11", features = ["test"] }

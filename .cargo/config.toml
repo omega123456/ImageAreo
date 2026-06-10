@@ -3,15 +3,13 @@
 # Requires cargo-nextest (https://nexte.st) and cargo-llvm-cov (https://github.com/taiki-e/cargo-llvm-cov).
 
 [alias]
-# Integration test targets for this crate (src-tauri/tests/*.rs). Add a `--test <name>`
-# pair here for each new integration suite as later phases (P4+) introduce them.
+# Run the full src-tauri test suite so new integration modules are picked up
+# automatically as later phases add files under `src-tauri/tests/`.
 imageareo-test-integration = [
   "nextest",
   "run",
   "--manifest-path",
   "src-tauri/Cargo.toml",
-  "--test",
-  "harness_smoke_integration",
 ]
 
 # Coverage run with the 90% gate. `--ignore-filename-regex` drops OS-side-effect /
@@ -26,8 +24,6 @@ imageareo-llvm-cov = [
   "src-tauri.*src.*lib\\.rs|src-tauri.*src.*main\\.rs|src-tauri.*tests.*common|cargo.*registry",
   "--manifest-path",
   "src-tauri/Cargo.toml",
-  "--test",
-  "harness_smoke_integration",
   "--fail-under-lines",
   "90",
   "--fail-under-functions",
