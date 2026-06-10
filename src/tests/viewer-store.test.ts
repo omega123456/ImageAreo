@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { viewer } from "../lib/stores/viewer.svelte";
+import { ipc } from "./ipc-mock";
 
 vi.mock("@tauri-apps/api/core", async () => {
   const actual = await vi.importActual<typeof import("@tauri-apps/api/core")>(
@@ -84,5 +85,154 @@ describe("viewer store", () => {
     expect(viewer.zoom).toBe(1);
     expect(viewer.pan).toEqual({ x: 0, y: 0 });
     expect(viewer.source).toContain("asset://");
+  });
+
+  it("openPath() does NOT invoke decode_image for native formats", async () => {
+    await viewer.openPath("/photos/photo.png");
+    expect(ipc.calls("decode_image")).toHaveLength(0);
+    expect(viewer.source).toContain("asset://");
+    expect(viewer.status).toBe("loading");
+  });
+
+  it("openPath() routes exotic formats through decode_image", async () => {
+    ipc.override("decode_image", () => ({
+      dataUrl: "data:image/png;base64,AAAA",
+      width: 1920,
+      height: 1080,
+      orientation: 6,
+    }));
+
+    await viewer.openPath("/photos/shot.heic");
+
+    expect(ipc.calls("decode_image")).toEqual([{ path: "/photos/shot.heic" }]);
+    expect(viewer.source).toBe("data:image/png;base64,AAAA");
+    expect(viewer.naturalWidth).toBe(1920);
+    expect(viewer.naturalHeight).toBe(1080);
+    expect(viewer.orientation).toBe(6);
+    expect(viewer.name).toBe("shot.heic");
+    expect(viewer.status).toBe("ready");
+  });
+
+  it("openPath() routes RAW and JXL through decode_image", async () => {
+    await viewer.openPath("/photos/raw.cr2");
+    await viewer.openPath("/photos/img.jxl");
+    expect(ipc.calls("decode_image")).toEqual([
+      { path: "/photos/raw.cr2" },
+      { path: "/photos/img.jxl" },
+    ]);
+  });
+
+  it("openPath() sets error status when decode fails", async () => {
+    ipc.override("decode_image", () => {
+      throw new Error("corrupt file");
+    });
+
+    await viewer.openPath("/photos/broken.tiff");
+
+    expect(viewer.status).toBe("error");
+    expect(viewer.path).toBe("/photos/broken.tiff");
+  });
+
+  it("openPath() ignores a stale decode result when superseded", async () => {
+    let resolveFirst: (v: unknown) => void = () => {};
+    ipc.override("decode_image", (args) => {
+      if ((args as { path: string }).path === "/photos/slow.heic") {
+        return new Promise((resolve) => {
+          resolveFirst = resolve;
+        });
+      }
+      return {
+        dataUrl: "data:image/png;base64,SECOND",
+        width: 2,
+        height: 2,
+        orientation: 1,
+      };
+    });
+
+    const first = viewer.openPath("/photos/slow.heic");
+    await viewer.openPath("/photos/fast.heic");
+
+    // Resolve the superseded first load after the second has finished.
+    resolveFirst({
+      dataUrl: "data:image/png;base64,FIRST",
+      width: 99,
+      height: 99,
+      orientation: 8,
+    });
+    await first;
+
+    expect(viewer.source).toBe("data:image/png;base64,SECOND");
+    expect(viewer.naturalWidth).toBe(2);
+    expect(viewer.orientation).toBe(1);
+  });
+
+  it("openPath() ignores a stale decode failure when superseded", async () => {
+    let rejectFirst: (e: unknown) => void = () => {};
+    ipc.override("decode_image", (args) => {
+      if ((args as { path: string }).path === "/photos/slow.heic") {
+        return new Promise((_resolve, reject) => {
+          rejectFirst = reject;
+        });
+      }
+      return {
+        dataUrl: "data:image/png;base64,OK",
+        width: 2,
+        height: 2,
+        orientation: 1,
+      };
+    });
+
+    const first = viewer.openPath("/photos/slow.heic");
+    await viewer.openPath("/photos/fast.heic");
+    rejectFirst(new Error("late failure"));
+    await first;
+
+    // The fast load succeeded; the stale failure must not flip us to error.
+    expect(viewer.status).toBe("ready");
+    expect(viewer.source).toBe("data:image/png;base64,OK");
+  });
+
+  it("reset() restores orientation to the identity value", async () => {
+    ipc.override("decode_image", () => ({
+      dataUrl: "data:image/png;base64,AAAA",
+      width: 4,
+      height: 4,
+      orientation: 7,
+    }));
+    await viewer.openPath("/photos/shot.heic");
+    expect(viewer.orientation).toBe(7);
+    viewer.reset();
+    expect(viewer.orientation).toBe(1);
+  });
+
+  it("rotateRight() cycles clockwise and wraps 270 → 0", () => {
+    expect(viewer.rotation).toBe(0);
+    viewer.rotateRight();
+    expect(viewer.rotation).toBe(90);
+    viewer.rotateRight();
+    expect(viewer.rotation).toBe(180);
+    viewer.rotateRight();
+    expect(viewer.rotation).toBe(270);
+    viewer.rotateRight();
+    expect(viewer.rotation).toBe(0);
+  });
+
+  it("rotateLeft() cycles counter-clockwise and wraps 0 → 270", () => {
+    expect(viewer.rotation).toBe(0);
+    viewer.rotateLeft();
+    expect(viewer.rotation).toBe(270);
+    viewer.rotateLeft();
+    expect(viewer.rotation).toBe(180);
+    viewer.rotateLeft();
+    expect(viewer.rotation).toBe(90);
+    viewer.rotateLeft();
+    expect(viewer.rotation).toBe(0);
+  });
+
+  it("load() resets a non-zero rotation back to 0", () => {
+    viewer.rotateRight();
+    expect(viewer.rotation).toBe(90);
+    viewer.load("asset://next.jpg", "next.jpg");
+    expect(viewer.rotation).toBe(0);
   });
 });

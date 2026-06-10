@@ -108,3 +108,24 @@ fn encode_png(image: &RgbaImage) -> Result<Vec<u8>, DecodeImageError> {
 
     Ok(cursor.into_inner())
 }
+
+#[doc(hidden)]
+pub mod __test_support {
+    use super::*;
+
+    pub fn target_dimensions_for(image: &DynamicImage, logical_size: u32) -> (u32, u32) {
+        target_dimensions(image, logical_size)
+    }
+
+    pub fn resize_image_for(
+        image: &DynamicImage,
+        width: u32,
+        height: u32,
+    ) -> Result<RgbaImage, DecodeImageError> {
+        resize_image(image, width, height)
+    }
+
+    pub fn encode_png_for(image: &RgbaImage) -> Result<Vec<u8>, DecodeImageError> {
+        encode_png(image)
+    }
+}

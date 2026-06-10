@@ -55,4 +55,32 @@ describe("folder store", () => {
     expect(folder.images).toEqual([]);
     expect(folder.currentIndex).toBe(-1);
   });
+
+  it("reapplies the current selection when the sort order changes live", async () => {
+    let sortOrder = "name";
+    ipc.override("scan_folder", () => {
+      if (sortOrder === "name") {
+        return [
+          { path: "/photos/a.jpg", name: "a.jpg", modified: 1 },
+          { path: "/photos/b.jpg", name: "b.jpg", modified: 2 },
+        ];
+      }
+      return [
+        { path: "/photos/b.jpg", name: "b.jpg", modified: 2 },
+        { path: "/photos/a.jpg", name: "a.jpg", modified: 1 },
+      ];
+    });
+
+    await folder.open("/photos/a.jpg");
+    sortOrder = "date";
+
+    const current = await folder.reloadForSortOrder("date");
+
+    expect(current?.path).toBe("/photos/a.jpg");
+    expect(folder.currentIndex).toBe(1);
+    expect(ipc.calls("scan_folder")).toEqual([
+      { path: "/photos/a.jpg", sortOrder: "name" },
+      { path: "/photos/a.jpg", sortOrder: "date" },
+    ]);
+  });
 });

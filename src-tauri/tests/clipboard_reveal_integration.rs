@@ -92,6 +92,64 @@ async fn reveal_in_file_manager_returns_clean_errors_for_bad_paths() {
     assert!(error.message.contains("must not be empty"));
 }
 
+#[test]
+fn validate_reveal_path_rejects_paths_that_are_neither_file_nor_directory() {
+    // A unix domain socket exists on disk but is neither a regular file nor a
+    // directory, exercising the final rejection branch of validate_reveal_path.
+    #[cfg(unix)]
+    {
+        use std::os::unix::net::UnixListener;
+
+        let dir = TempImageDir::new();
+        let socket_path = dir.path().join("reveal.sock");
+
+        // Binding can be blocked by sandboxes; only assert the branch when the OS
+        // actually let us create the special file.
+        if UnixListener::bind(&socket_path).is_ok() {
+            let error = validate_reveal_path(&socket_path)
+                .expect_err("non file/dir path should be rejected");
+
+            assert_eq!(error.code, "invalid_path");
+            assert!(error.message.contains("not a file or directory"));
+        }
+    }
+}
+
+#[tokio::test]
+async fn reveal_in_file_manager_rejects_missing_path_before_os_reveal() {
+    let error = reveal_in_file_manager("/definitely/missing/file.png".to_string())
+        .await
+        .expect_err("missing path should fail validation before any OS reveal");
+
+    assert_eq!(error.code, "invalid_path");
+    assert!(error.message.contains("failed to resolve"));
+}
+
+#[tokio::test]
+async fn copy_image_to_clipboard_command_rejects_unsupported_inputs_before_os_write() {
+    // Drives the command up to (and failing at) clipboard preparation so the
+    // input-validation/error path is covered without performing an OS clipboard
+    // write (the OS write step is on the coverage-exclusion list).
+    use tauri::test::{mock_builder, mock_context, noop_assets};
+
+    let app = mock_builder()
+        .build(mock_context(noop_assets()))
+        .expect("mock app should build");
+
+    let dir = TempImageDir::new();
+    let unsupported = dir.write("notes.txt", b"plain text");
+
+    let error = imageareo_lib::commands::copy_image_to_clipboard(
+        app.handle().clone(),
+        unsupported.to_string_lossy().into_owned(),
+    )
+    .await
+    .expect_err("unsupported input should fail before the OS clipboard write");
+
+    assert_eq!(error.code, "unsupported_format");
+    assert!(!error.message.is_empty());
+}
+
 fn fixture_path(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests")

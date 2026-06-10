@@ -1,10 +1,6 @@
 use std::path::Path;
 
 use serde::Serialize;
-use tauri::image::Image as TauriImage;
-use tauri::{AppHandle, Runtime};
-use tauri_plugin_clipboard_manager::ClipboardExt;
-
 use crate::image;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,7 +19,7 @@ pub struct ClipboardCommandError {
 }
 
 impl ClipboardCommandError {
-    fn clipboard(message: impl Into<String>) -> Self {
+    pub(crate) fn clipboard(message: impl Into<String>) -> Self {
         Self {
             code: "clipboard_failed",
             message: message.into(),
@@ -52,17 +48,11 @@ pub fn prepare_clipboard_image(path: &Path) -> Result<ClipboardImageData, Clipbo
     })
 }
 
-#[tauri::command(rename_all = "camelCase")]
-pub async fn copy_image_to_clipboard<R: Runtime>(
-    app: AppHandle<R>,
-    path: String,
-) -> Result<(), ClipboardCommandError> {
-    let prepared = prepare_clipboard_image(Path::new(&path))?;
-    let image = TauriImage::new_owned(prepared.rgba_bytes, prepared.width, prepared.height);
+#[doc(hidden)]
+pub mod __test_support {
+    use super::*;
 
-    app.clipboard().write_image(&image).map_err(|err| {
-        ClipboardCommandError::clipboard(format!("failed to write image to clipboard: {err}"))
-    })?;
-
-    Ok(())
+    pub fn clipboard_error(message: &str) -> ClipboardCommandError {
+        ClipboardCommandError::clipboard(message)
+    }
 }

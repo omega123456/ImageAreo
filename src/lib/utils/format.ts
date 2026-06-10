@@ -63,3 +63,34 @@ export function isSupportedImage(path: string): boolean {
 export function supportedExtensions(): string[] {
   return [...NATIVE_EXTENSIONS, ...NEEDS_BACKEND_EXTENSIONS];
 }
+
+/**
+ * CSS `transform` fragment that applies an EXIF orientation (1–8) as a
+ * display-time transform — never by re-encoding pixels. Returned as an
+ * image-space transform to be composed *after* the zoom/pan transform so the
+ * reorientation happens in the image's own coordinate space.
+ *
+ * The eight EXIF orientation values (TIFF tag 0x0112) map to combinations of
+ * a horizontal mirror and a rotation. Unknown values fall back to identity.
+ */
+export function orientationTransform(orientation: number): string {
+  switch (orientation) {
+    case 2:
+      return "scaleX(-1)";
+    case 3:
+      return "rotate(180deg)";
+    case 4:
+      return "scaleY(-1)";
+    case 5:
+      return "rotate(90deg) scaleX(-1)";
+    case 6:
+      return "rotate(90deg)";
+    case 7:
+      return "rotate(270deg) scaleX(-1)";
+    case 8:
+      return "rotate(270deg)";
+    case 1:
+    default:
+      return "";
+  }
+}

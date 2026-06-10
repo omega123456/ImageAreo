@@ -43,6 +43,56 @@ async fn generate_thumbnail_command_returns_png_data_url_for_jxl_fixture() {
     assert_eq!(decoded.dimensions(), (36, 36));
 }
 
+#[test]
+fn generate_thumbnail_rejects_zero_logical_size() {
+    let dir = TempImageDir::new();
+    let path = dir.path().join("native.png");
+    common::write_dynamic_fixture(&path, 10, 10, ImageFormat::Png);
+
+    let error = thumbnail::generate_thumbnail(&path, 0).expect_err("zero size should be rejected");
+
+    assert_eq!(error.code, "decode_failed");
+    assert!(error.message.contains("greater than zero"));
+}
+
+#[test]
+fn generate_thumbnail_scales_tall_images_by_height() {
+    let dir = TempImageDir::new();
+    let path = dir.path().join("tall.png");
+    common::write_dynamic_fixture(&path, 10, 20, ImageFormat::Png);
+
+    let thumbnail = thumbnail::generate_thumbnail(&path, 12).expect("thumbnail should succeed");
+    let decoded = decode_data_url_image(&thumbnail.data_url);
+
+    // Height is the long edge here: capped at logical_size * 2 = 24, width scaled down.
+    assert_eq!((thumbnail.width, thumbnail.height), (12, 24));
+    assert_eq!(decoded.dimensions(), (12, 24));
+}
+
+#[test]
+fn generate_thumbnail_propagates_decode_errors_for_invalid_inputs() {
+    let dir = TempImageDir::new();
+    let unsupported = dir.write("notes.txt", b"plain text");
+
+    let error = thumbnail::generate_thumbnail(&unsupported, 16)
+        .expect_err("unsupported input should error");
+
+    assert_eq!(error.code, "unsupported_format");
+    assert!(!error.message.is_empty());
+}
+
+#[tokio::test]
+async fn generate_thumbnail_command_propagates_errors() {
+    let dir = TempImageDir::new();
+    let unsupported = dir.write("notes.txt", b"plain text");
+
+    let error = commands::generate_thumbnail(path_string(&unsupported), 16)
+        .await
+        .expect_err("unsupported input should error through the command");
+
+    assert_eq!(error.code, "unsupported_format");
+}
+
 fn decode_data_url_image(data_url: &str) -> image_rs::DynamicImage {
     let encoded = data_url
         .strip_prefix("data:image/png;base64,")

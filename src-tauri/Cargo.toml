@@ -15,6 +15,21 @@ license = "MIT"
 name = "imageareo_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+# The desktop binary is gated behind a default-on feature so coverage runs can
+# disable it (`--no-default-features`). Building the bin would otherwise compile a
+# SECOND copy of the lib with different `tauri` feature unification than the test
+# rlib (the dev-only `tauri/test` feature), and cargo-llvm-cov would report that
+# never-executed copy as a phantom 0%-covered instance, sinking the gate. The
+# feature is on by default, so `tauri dev`/`tauri build` are unaffected.
+[[bin]]
+name = "imageareo"
+path = "src/main.rs"
+required-features = ["desktop-binary"]
+
+[features]
+default = ["desktop-binary"]
+desktop-binary = []
+
 [build-dependencies]
 tauri-build = { version = "~2.6", features = [] }
 

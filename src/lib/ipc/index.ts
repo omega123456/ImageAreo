@@ -20,6 +20,15 @@ function invokeCommand<TResponse>(
   return invoke<TResponse>(command, request);
 }
 
+/**
+ * Signal that the frontend has registered its listeners and is ready to
+ * receive the initial launch path. Resolves to the buffered path (if any) so
+ * the caller can open it directly — see the Phase 12 ready-handshake.
+ */
+export function frontendReady(): Promise<string | null> {
+  return invokeCommand<string | null>(IPC_COMMANDS.frontendReady, {});
+}
+
 export function scanFolder(request: ScanFolderRequest): Promise<ImageEntry[]> {
   return invokeCommand<ImageEntry[]>(
     IPC_COMMANDS.scanFolder,

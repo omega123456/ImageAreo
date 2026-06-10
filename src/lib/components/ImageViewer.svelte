@@ -1,5 +1,6 @@
 <script lang="ts">
   import { viewer } from "../stores/viewer.svelte";
+  import { orientationTransform } from "../utils/format";
   import { ZoomPanController } from "../utils/zoom-pan-controller";
   import EmptyState from "./states/EmptyState.svelte";
 
@@ -37,8 +38,17 @@
   }
 
   // The single permitted inline-style use: the JS-driven zoom/pan transform.
+  // The EXIF-orientation fragment is appended last so it reorients the image
+  // in its own coordinate space, beneath the user's zoom/pan/rotation.
   const transform = $derived(
-    `translate(${viewer.pan.x}px, ${viewer.pan.y}px) scale(${viewer.zoom}) rotate(${viewer.rotation}deg)`,
+    [
+      `translate(${viewer.pan.x}px, ${viewer.pan.y}px)`,
+      `scale(${viewer.zoom})`,
+      `rotate(${viewer.rotation}deg)`,
+      orientationTransform(viewer.orientation),
+    ]
+      .filter(Boolean)
+      .join(" "),
   );
 </script>
 

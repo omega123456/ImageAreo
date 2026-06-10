@@ -1,13 +1,17 @@
 pub mod clipboard;
+pub mod clipboard_runtime;
 pub mod reveal;
+pub mod reveal_runtime;
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 use crate::folder::{self, ImageEntry, SortOrder};
 use crate::image::{self, DecodeImageError};
 use crate::thumbnail;
-pub use clipboard::{copy_image_to_clipboard, prepare_clipboard_image, ClipboardImageData};
-pub use reveal::{reveal_in_file_manager, validate_reveal_path};
+pub use clipboard::{prepare_clipboard_image, ClipboardImageData};
+pub use clipboard_runtime::copy_image_to_clipboard;
+pub use reveal::validate_reveal_path;
+pub use reveal_runtime::reveal_in_file_manager;
 use serde::Serialize;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

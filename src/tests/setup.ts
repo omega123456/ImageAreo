@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { afterEach, vi } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
 import { cleanup } from "@testing-library/svelte";
 
 import { setupIpc } from "./ipc-mock";
@@ -67,6 +67,23 @@ if (typeof window !== "undefined") {
       `${protocol}://${path}`;
   }
 }
+
+// Metadata for getCurrentWindow()/getCurrentWebview() — used by the Phase-12
+// native drag-drop listener registration. Re-stamped before each test because
+// the IPC mock setup (mockIPC) re-initializes __TAURI_INTERNALS__.
+beforeEach(() => {
+  const internals = ((window as typeof window & {
+    __TAURI_INTERNALS__?: Record<string, unknown>;
+  }).__TAURI_INTERNALS__ ??= {});
+  if (typeof internals.convertFileSrc !== "function") {
+    internals.convertFileSrc = (path: string, protocol = "asset") =>
+      `${protocol}://${path}`;
+  }
+  internals.metadata = {
+    currentWindow: { label: "main" },
+    currentWebview: { windowLabel: "main", label: "main" },
+  };
+});
 
 afterEach(() => {
   cleanup();

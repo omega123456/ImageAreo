@@ -17,7 +17,7 @@ impl RevealCommandError {
         }
     }
 
-    fn reveal(message: impl Into<String>) -> Self {
+    pub(crate) fn reveal(message: impl Into<String>) -> Self {
         Self {
             code: "reveal_failed",
             message: message.into(),
@@ -51,13 +51,15 @@ pub fn validate_reveal_path(path: &Path) -> Result<PathBuf, RevealCommandError> 
     }
 }
 
-#[tauri::command(rename_all = "camelCase")]
-pub async fn reveal_in_file_manager(path: String) -> Result<(), RevealCommandError> {
-    let validated = validate_reveal_path(Path::new(&path))?;
+#[doc(hidden)]
+pub mod __test_support {
+    use super::*;
 
-    tauri_plugin_opener::reveal_item_in_dir(&validated).map_err(|err| {
-        RevealCommandError::reveal(format!("failed to reveal {}: {err}", validated.display()))
-    })?;
+    pub fn invalid_path_error(message: &str) -> RevealCommandError {
+        RevealCommandError::invalid_path(message)
+    }
 
-    Ok(())
+    pub fn reveal_error(message: &str) -> RevealCommandError {
+        RevealCommandError::reveal(message)
+    }
 }

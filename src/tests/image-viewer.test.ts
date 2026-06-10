@@ -57,6 +57,22 @@ describe("ImageViewer", () => {
     expect(viewer.status).toBe("error");
   });
 
+  it("applies the EXIF orientation transform for a rotated image", () => {
+    viewer.load("data:image/png;base64,AAAA", "shot.heic");
+    viewer.orientation = 6;
+    render(ImageViewer);
+    const img = screen.getByRole("img") as HTMLImageElement;
+    expect(img.getAttribute("style")).toContain("rotate(90deg)");
+  });
+
+  it("omits an orientation fragment for the identity orientation", () => {
+    viewer.load("asset://photo.jpg", "photo.jpg");
+    render(ImageViewer);
+    const img = screen.getByRole("img") as HTMLImageElement;
+    // Only the user rotation(0deg) should be present, not an EXIF fragment.
+    expect(img.getAttribute("style")).toContain("rotate(0deg)");
+  });
+
   it("exposes a controller via the bound prop and tears it down on unmount", () => {
     viewer.load("asset://photo.jpg", "photo.jpg");
     const { unmount } = render(ImageViewer);

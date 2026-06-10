@@ -4,6 +4,7 @@ import {
   isNativeFormat,
   isSupportedImage,
   supportedExtensions,
+  orientationTransform,
   NATIVE_EXTENSIONS,
   NEEDS_BACKEND_EXTENSIONS,
 } from "../lib/utils/format";
@@ -66,5 +67,33 @@ describe("supportedExtensions", () => {
     for (const ext of [...NATIVE_EXTENSIONS, ...NEEDS_BACKEND_EXTENSIONS]) {
       expect(all).toContain(ext);
     }
+  });
+
+  it.each(["raw", "cr3", "orf", "rw2", "raf", "srw", "pef"])(
+    "includes supported RAW extension %s",
+    (ext) => {
+      expect(supportedExtensions()).toContain(ext);
+    },
+  );
+});
+
+describe("orientationTransform", () => {
+  it("returns identity (empty) for orientation 1", () => {
+    expect(orientationTransform(1)).toBe("");
+  });
+  it.each([
+    [2, "scaleX(-1)"],
+    [3, "rotate(180deg)"],
+    [4, "scaleY(-1)"],
+    [5, "rotate(90deg) scaleX(-1)"],
+    [6, "rotate(90deg)"],
+    [7, "rotate(270deg) scaleX(-1)"],
+    [8, "rotate(270deg)"],
+  ])("maps EXIF orientation %i to its CSS transform", (value, expected) => {
+    expect(orientationTransform(value)).toBe(expected);
+  });
+  it("falls back to identity for unknown/zero orientation", () => {
+    expect(orientationTransform(0)).toBe("");
+    expect(orientationTransform(99)).toBe("");
   });
 });

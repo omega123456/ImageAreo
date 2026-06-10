@@ -57,7 +57,7 @@ e2e/                      # Playwright specs
 2. **Coverage gate: ≥ 90%** (Vitest line/function/statement thresholds on the frontend; Rust coverage), enforced in config. A change is not done if it drops coverage below 90%.
 3. **Coverage-exclusion policy:** OS-side-effect code that cannot be asserted headlessly is excluded from the denominator — the OS write step of clipboard copy, reveal-in-file-manager, fullscreen window calls, updater install/relaunch, and the launch-path OS-event hookup. Their **pure logic** (decode, path parsing, sorting, classification) is NOT excluded and must be tested.
 4. **Frontend tests** use Vitest (jsdom) + `@testing-library/svelte`, located in `src/tests/`. Mock the backend through the centralized **IPC mock seam** (`src/tests/ipc-mock.ts` + `fixtures.ts`): override per test with `ipc.override(cmd, handler)`.
-5. **Rust tests** are integration tests in `src-tauri/tests/*_integration.rs` using the Tauri `test` feature and `tempfile` fixtures.
+5. **Rust tests** are integration tests in `src-tauri/tests/*_integration.rs` using the Tauri `test` feature and `tempfile` fixtures. Do **not** place Rust tests in `src-tauri/src/`; production Rust files must not contain inline `#[cfg(test)]` modules.
 6. **E2E** uses Playwright (`e2e/`).
 
 ## Coding Conventions

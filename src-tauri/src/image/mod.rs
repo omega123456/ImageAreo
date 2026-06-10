@@ -311,3 +311,44 @@ fn read_orientation(path: &Path) -> u16 {
         .filter(|value| (1..=8).contains(value))
         .unwrap_or(1)
 }
+
+#[doc(hidden)]
+pub mod __test_support {
+    use super::*;
+
+    pub fn normalized_extension_for(path: &Path) -> Result<String, DecodeImageError> {
+        normalized_extension(path)
+    }
+
+    pub fn linear_sample_to_u8_for(sample: f32) -> u8 {
+        linear_sample_to_u8(sample)
+    }
+
+    pub fn encode_png_for(image: &DynamicImage) -> Result<Vec<u8>, DecodeImageError> {
+        encode_png(image)
+    }
+
+    pub fn read_orientation_for(path: &Path) -> u16 {
+        read_orientation(path)
+    }
+
+    pub fn decode_with_image_crate_for(path: &Path) -> Result<DynamicImage, DecodeImageError> {
+        decode_with_image_crate(path)
+    }
+
+    pub fn unsupported_error(message: &str) -> DecodeImageError {
+        DecodeImageError::unsupported(message)
+    }
+
+    pub fn io_error(message: &str) -> DecodeImageError {
+        DecodeImageError::io(message)
+    }
+
+    pub fn decode_error(message: &str) -> DecodeImageError {
+        DecodeImageError::decode(message)
+    }
+
+    pub fn encode_error(message: &str) -> DecodeImageError {
+        DecodeImageError::encode(message)
+    }
+}
