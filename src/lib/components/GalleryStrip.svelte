@@ -2,6 +2,7 @@
   import { ChevronLeft, ChevronRight } from "@lucide/svelte";
   import GalleryThumb from "./GalleryThumb.svelte";
   import { folder } from "../stores/folder.svelte";
+  import { galleryThumbnails } from "../stores/gallery-thumbnails.svelte";
   import { settings } from "../stores/settings.svelte";
 
   interface Props {
@@ -20,10 +21,28 @@
   const visibleCount = $derived(Math.max(1, thumbnailCount));
 
   function clampWindowStart(total: number, count: number, currentIndex: number): number {
-    if (total <= count) return 0;
+    if (total <= count) {
+      return 0;
+    }
     const preferred = Math.max(0, currentIndex - Math.floor(count / 2));
     return Math.min(preferred, total - count);
   }
+
+  $effect(() => {
+    const paths = images.map((entry) => entry.path);
+    const requestedSize = size;
+    let cancelled = false;
+
+    queueMicrotask(() => {
+      if (!cancelled) {
+        galleryThumbnails.prefetchFolder(paths, requestedSize);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  });
 
   const windowStart = $derived(
     clampWindowStart(images.length, visibleCount, Math.max(0, folder.currentIndex)),

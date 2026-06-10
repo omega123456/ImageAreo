@@ -24,7 +24,7 @@
   // its identity/size changes. The cache de-duplicates, so re-renders from
   // virtualization recycling never trigger a duplicate backend call.
   $effect(() => {
-    void galleryThumbnails.request(entry.path, size);
+    void galleryThumbnails.request(entry.path, size, { priority: true });
   });
 
   const thumb = $derived(galleryThumbnails.get(entry.path, size));
@@ -42,9 +42,9 @@
   aria-current={active ? "true" : undefined}
   onclick={() => onSelect(index)}
 >
-  {#if status === "ready" && thumb?.dataUrl}
+  {#if status === "ready" && thumb?.url}
     <img
-      src={thumb.dataUrl}
+      src={thumb.url}
       alt={entry.name}
       class="h-full w-full object-cover"
       draggable="false"

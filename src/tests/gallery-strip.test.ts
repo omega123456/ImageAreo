@@ -17,13 +17,21 @@ function seedFolder(count: number): void {
   folder.currentIndex = 0;
 }
 
+async function flushAsyncWork(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 0);
+  });
+}
+
 describe("GalleryStrip", () => {
   beforeEach(() => {
     folder.reset();
     settings.resetForTests();
     galleryThumbnails.clear();
     ipc.override("generate_thumbnail", (args) => ({
-      dataUrl: `data:${args?.path}`,
+      path: `/tmp/${String(args?.path).split("/").pop()}.jpg`,
     }));
   });
 
@@ -50,13 +58,27 @@ describe("GalleryStrip", () => {
     expect(calls).toContainEqual({ path: "/photos/img0.jpg", size: 120 });
   });
 
+  it("prefetches thumbnails for images outside the visible window", async () => {
+    seedFolder(10);
+    settings.thumbnailCount = 3;
+    render(GalleryStrip);
+
+    await screen.findByRole("button", { name: "img0.jpg" });
+    await flushAsyncWork();
+
+    expect(ipc.calls("generate_thumbnail")).toContainEqual({
+      path: "/photos/img5.jpg",
+      size: 120,
+    });
+  });
+
   it("does not re-request thumbnails already in the session cache", async () => {
     seedFolder(3);
     // Pre-warm the cache for img0 at the default size.
     await galleryThumbnails.request("/photos/img0.jpg", 120);
     ipc.reset();
     ipc.override("generate_thumbnail", (args) => ({
-      dataUrl: `data:${args?.path}`,
+      path: `/tmp/${String(args?.path).split("/").pop()}.jpg`,
     }));
 
     render(GalleryStrip);

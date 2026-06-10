@@ -5,15 +5,15 @@ use std::sync::{Arc, Mutex};
 
 use ::image::{self as image_rs, DynamicImage, GenericImageView, ImageFormat, Rgba, RgbaImage};
 use common::TempImageDir;
-use imageareo_lib::commands::{self};
 use imageareo_lib::commands::clipboard::ClipboardCommandError;
 use imageareo_lib::commands::reveal::RevealCommandError;
+use imageareo_lib::commands::{self};
 use imageareo_lib::image::{self, ImageFormatSupport};
 use imageareo_lib::menu::{self, ids, MenuAction, MENU_EVENT};
 use imageareo_lib::startup::{parse_launch_path, LaunchPathBuffer};
 use imageareo_lib::thumbnail;
-use tauri::Listener;
 use tauri::test::{mock_builder, mock_context, noop_assets};
+use tauri::Listener;
 
 fn write_image(path: &Path, width: u32, height: u32, format: ImageFormat) {
     let image = DynamicImage::ImageRgba8(RgbaImage::from_pixel(
@@ -68,7 +68,10 @@ fn menu_actions_map_ids_and_emit_known_events_only() {
     let handler_id = app.listen(MENU_EVENT, move |event| {
         let payload = serde_json::from_str::<String>(event.payload())
             .expect("payload should decode from json");
-        captured.lock().expect("event log should unlock").push(payload);
+        captured
+            .lock()
+            .expect("event log should unlock")
+            .push(payload);
     });
 
     menu::route_menu_event(app.handle(), ids::FIT);
@@ -95,11 +98,15 @@ async fn commands_return_expected_transport_shapes() {
     let names: Vec<_> = entries.into_iter().map(|entry| entry.name).collect();
     assert_eq!(names, vec!["image-01.png", "image-02.png"]);
 
-    let decoded = commands::decode_image(fixture_path("sample.heic").to_string_lossy().into_owned())
-        .await
-        .expect("decode command should succeed");
+    let decoded =
+        commands::decode_image(fixture_path("sample.heic").to_string_lossy().into_owned())
+            .await
+            .expect("decode command should succeed");
     assert!(decoded.data_url.starts_with("data:image/png;base64,"));
-    assert_eq!((decoded.width, decoded.height, decoded.orientation), (48, 48, 1));
+    assert_eq!(
+        (decoded.width, decoded.height, decoded.orientation),
+        (48, 48, 1)
+    );
 
     let thumbnail = commands::generate_thumbnail(
         fixture_path("sample.jxl").to_string_lossy().into_owned(),
@@ -107,7 +114,11 @@ async fn commands_return_expected_transport_shapes() {
     )
     .await
     .expect("thumbnail command should succeed");
-    assert!(thumbnail.data_url.starts_with("data:image/png;base64,"));
+    let cache_root = std::env::temp_dir()
+        .join("imageareo-thumbnails")
+        .to_string_lossy()
+        .into_owned();
+    assert!(thumbnail.path.starts_with(&cache_root));
 }
 
 #[test]
@@ -130,6 +141,14 @@ fn image_public_logic_handles_classification_and_missing_backend_paths() {
     let loaded = image::load_supported_image_path(&png).expect("native image should decode");
     assert_eq!(loaded.image.dimensions(), (4, 3));
     assert_eq!(loaded.orientation, 1);
+
+    let jpeg = dir.path().join("large.jpg");
+    write_image(&jpeg, 1600, 1200, ImageFormat::Jpeg);
+    let thumbnail_source =
+        image::load_thumbnail_source(&jpeg, 64).expect("thumbnail source should decode");
+    assert!(thumbnail_source.image.width() < 1600);
+    assert!(thumbnail_source.image.height() < 1200);
+    assert_eq!(thumbnail_source.orientation, 1);
 
     let missing_heic = dir.path().join("missing.heic");
     let missing_jxl = dir.path().join("missing.jxl");

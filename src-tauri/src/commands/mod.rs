@@ -26,7 +26,7 @@ pub struct DecodedImage {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Thumbnail {
-    pub data_url: String,
+    pub path: String,
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -64,6 +64,6 @@ pub async fn generate_thumbnail(path: String, size: u32) -> Result<Thumbnail, De
             })??;
 
     Ok(Thumbnail {
-        data_url: thumbnail.data_url,
+        path: thumbnail.path,
     })
 }

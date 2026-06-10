@@ -13,7 +13,7 @@ describe("IPC wrappers", () => {
   it("forwards each command through the IPC seam with typed payloads", async () => {
     await scanFolder({ path: "/photos/img1.jpg", sortOrder: "date" });
     await decodeImage({ path: "/photos/img1.heic" });
-    await generateThumbnail({ path: "/photos/img1.jpg", size: 128 });
+    const thumbnail = await generateThumbnail({ path: "/photos/img1.jpg", size: 128 });
     await copyImageToClipboard({ path: "/photos/img1.jpg" });
     await revealInFileManager({ path: "/photos/img1.jpg" });
 
@@ -30,5 +30,6 @@ describe("IPC wrappers", () => {
     expect(ipc.calls("reveal_in_file_manager")).toEqual([
       { path: "/photos/img1.jpg" },
     ]);
+    expect(thumbnail).toEqual({ url: "asset:///tmp/imageareo-thumb.jpg" });
   });
 });

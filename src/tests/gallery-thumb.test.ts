@@ -14,7 +14,7 @@ describe("GalleryThumb", () => {
   });
 
   it("requests its thumbnail on mount and labels itself", async () => {
-    ipc.override("generate_thumbnail", () => ({ dataUrl: "data:image/png;a" }));
+    ipc.override("generate_thumbnail", () => ({ path: "/tmp/a.jpg" }));
 
     render(GalleryThumb, {
       props: { entry, index: 0, size: 120, active: false, onSelect: vi.fn() },
@@ -22,7 +22,7 @@ describe("GalleryThumb", () => {
 
     expect(await screen.findByRole("img")).toHaveAttribute(
       "src",
-      "data:image/png;a",
+      "asset:///tmp/a.jpg",
     );
     expect(screen.getByRole("button")).toHaveAttribute("aria-label", "a.jpg");
     expect(ipc.calls("generate_thumbnail")).toEqual([
@@ -31,7 +31,7 @@ describe("GalleryThumb", () => {
   });
 
   it("shows a pulsing placeholder while the thumbnail is pending", () => {
-    let resolve: ((value: { dataUrl: string }) => void) | undefined;
+    let resolve: ((value: { path: string }) => void) | undefined;
     ipc.override(
       "generate_thumbnail",
       () => new Promise((r) => (resolve = r)),
@@ -43,11 +43,11 @@ describe("GalleryThumb", () => {
 
     expect(container.querySelector(".animate-pulse")).not.toBeNull();
     expect(screen.queryByRole("img")).toBeNull();
-    resolve?.({ dataUrl: "x" });
+    resolve?.({ path: "/tmp/x.jpg" });
   });
 
   it("marks itself active via aria-current and the highlight ring", () => {
-    ipc.override("generate_thumbnail", () => ({ dataUrl: "data:image/png;a" }));
+    ipc.override("generate_thumbnail", () => ({ path: "/tmp/a.jpg" }));
 
     render(GalleryThumb, {
       props: { entry, index: 2, size: 120, active: true, onSelect: vi.fn() },
@@ -59,7 +59,7 @@ describe("GalleryThumb", () => {
   });
 
   it("invokes onSelect with its index when clicked", async () => {
-    ipc.override("generate_thumbnail", () => ({ dataUrl: "data:image/png;a" }));
+    ipc.override("generate_thumbnail", () => ({ path: "/tmp/a.jpg" }));
     const onSelect = vi.fn();
 
     render(GalleryThumb, {

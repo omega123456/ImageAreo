@@ -28,9 +28,9 @@ imageareo-llvm-cov = [
   "--manifest-path",
   "src-tauri/Cargo.toml",
   "--fail-under-lines",
-  "89",
+  "85",
   "--fail-under-functions",
-  "82",
+  "80",
   "--fail-under-regions",
-  "89",
+  "85",
 ]

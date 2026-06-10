@@ -2,9 +2,10 @@ use std::fs;
 use std::io::{BufReader, Cursor};
 use std::path::Path;
 
-use exif::{In, Reader as ExifReader, Tag};
+use exif::{Exif, In, Reader as ExifReader, Tag};
 use heic::{DecoderConfig, PixelLayout};
-use image::{DynamicImage, ImageBuffer, ImageFormat, ImageReader, RgbaImage};
+use image::{DynamicImage, GrayImage, ImageBuffer, ImageFormat, ImageReader, RgbImage, RgbaImage};
+use jpeg_decoder::{Decoder as JpegDecoder, PixelFormat as JpegPixelFormat};
 use serde::Serialize;
 
 const NATIVE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp"];
@@ -31,6 +32,12 @@ pub struct DecodedImageData {
 pub struct LoadedImageData {
     pub image: DynamicImage,
     pub orientation: u16,
+}
+
+#[derive(Debug)]
+struct ExifMetadata {
+    orientation: u16,
+    embedded_thumbnail: Option<DynamicImage>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -123,7 +130,43 @@ pub fn load_supported_image_path(path: &Path) -> Result<LoadedImageData, DecodeI
     }
 }
 
+pub fn load_thumbnail_source(
+    path: &Path,
+    max_edge: u32,
+) -> Result<LoadedImageData, DecodeImageError> {
+    let exif_metadata = read_exif_metadata(path, max_edge / 2);
+    if let Some(image) = exif_metadata.embedded_thumbnail {
+        return Ok(LoadedImageData {
+            image,
+            orientation: exif_metadata.orientation,
+        });
+    }
+
+    match classify_path(path) {
+        Some(ImageFormatSupport::Native) => decode_native_thumbnail_image_with_orientation(
+            path,
+            max_edge,
+            exif_metadata.orientation,
+        ),
+        Some(ImageFormatSupport::NeedsBackend) => {
+            load_backend_image_path_with_orientation(path, exif_metadata.orientation)
+        }
+        None => Err(DecodeImageError::unsupported(format!(
+            "unsupported image format: {}",
+            path.display()
+        ))),
+    }
+}
+
 fn load_backend_image_path(path: &Path) -> Result<LoadedImageData, DecodeImageError> {
+    let orientation = read_orientation(path);
+    load_backend_image_path_with_orientation(path, orientation)
+}
+
+fn load_backend_image_path_with_orientation(
+    path: &Path,
+    orientation: u16,
+) -> Result<LoadedImageData, DecodeImageError> {
     match classify_path(path) {
         Some(ImageFormatSupport::Native) => {
             return Err(DecodeImageError::unsupported(format!(
@@ -140,7 +183,6 @@ fn load_backend_image_path(path: &Path) -> Result<LoadedImageData, DecodeImageEr
         }
     }
 
-    let orientation = read_orientation(path);
     let image = match normalized_extension(path)?.as_str() {
         "avif" => decode_heic(path)?,
         "tif" | "tiff" | "bmp" | "ico" => decode_with_image_crate(path)?,
@@ -205,6 +247,128 @@ fn decode_native_image(path: &Path) -> Result<LoadedImageData, DecodeImageError>
         image,
         orientation: read_orientation(path),
     })
+}
+
+fn decode_native_thumbnail_image_with_orientation(
+    path: &Path,
+    max_edge: u32,
+    orientation: u16,
+) -> Result<LoadedImageData, DecodeImageError> {
+    let image = match normalized_extension(path)?.as_str() {
+        "jpg" | "jpeg" => decode_jpeg_thumbnail_image(path, max_edge)?,
+        _ => decode_with_image_crate(path)?,
+    };
+
+    Ok(LoadedImageData { image, orientation })
+}
+
+fn decode_jpeg_thumbnail_image(
+    path: &Path,
+    max_edge: u32,
+) -> Result<DynamicImage, DecodeImageError> {
+    let file = std::fs::File::open(path)
+        .map_err(|err| DecodeImageError::io(format!("failed to open {}: {err}", path.display())))?;
+    let mut decoder = JpegDecoder::new(BufReader::new(file));
+    let requested_edge = max_edge.clamp(1, u32::from(u16::MAX)) as u16;
+
+    decoder
+        .scale(requested_edge, requested_edge)
+        .map_err(|err| {
+            DecodeImageError::decode(format!(
+                "failed to configure scaled JPEG decode for {}: {err}",
+                path.display()
+            ))
+        })?;
+
+    let pixels = decoder.decode().map_err(|err| {
+        DecodeImageError::decode(format!(
+            "failed to decode scaled JPEG {}: {err}",
+            path.display()
+        ))
+    })?;
+    let info = decoder.info().ok_or_else(|| {
+        DecodeImageError::decode(format!(
+            "scaled JPEG decoder did not report metadata for {}",
+            path.display()
+        ))
+    })?;
+
+    image_from_jpeg_pixels(
+        u32::from(info.width),
+        u32::from(info.height),
+        info.pixel_format,
+        pixels,
+        path,
+    )
+}
+
+fn image_from_jpeg_pixels(
+    width: u32,
+    height: u32,
+    pixel_format: JpegPixelFormat,
+    pixels: Vec<u8>,
+    path: &Path,
+) -> Result<DynamicImage, DecodeImageError> {
+    match pixel_format {
+        JpegPixelFormat::L8 => GrayImage::from_vec(width, height, pixels)
+            .map(DynamicImage::ImageLuma8)
+            .ok_or_else(|| {
+                DecodeImageError::decode(format!(
+                    "scaled JPEG decoder returned invalid grayscale pixels for {}",
+                    path.display()
+                ))
+            }),
+        JpegPixelFormat::L16 => {
+            let luma8 = pixels
+                .chunks_exact(2)
+                .map(|chunk| chunk[0])
+                .collect::<Vec<_>>();
+
+            GrayImage::from_vec(width, height, luma8)
+                .map(DynamicImage::ImageLuma8)
+                .ok_or_else(|| {
+                    DecodeImageError::decode(format!(
+                        "scaled JPEG decoder returned invalid 16-bit grayscale pixels for {}",
+                        path.display()
+                    ))
+                })
+        }
+        JpegPixelFormat::RGB24 => RgbImage::from_vec(width, height, pixels)
+            .map(DynamicImage::ImageRgb8)
+            .ok_or_else(|| {
+                DecodeImageError::decode(format!(
+                    "scaled JPEG decoder returned invalid RGB pixels for {}",
+                    path.display()
+                ))
+            }),
+        JpegPixelFormat::CMYK32 => {
+            let mut rgb_pixels = Vec::with_capacity((width as usize) * (height as usize) * 3);
+
+            for chunk in pixels.chunks_exact(4) {
+                let cyan = u16::from(chunk[0]);
+                let magenta = u16::from(chunk[1]);
+                let yellow = u16::from(chunk[2]);
+                let key = u16::from(chunk[3]);
+
+                let red = (((255 - cyan) * (255 - key)) + 127) / 255;
+                let green = (((255 - magenta) * (255 - key)) + 127) / 255;
+                let blue = (((255 - yellow) * (255 - key)) + 127) / 255;
+
+                rgb_pixels.push(red as u8);
+                rgb_pixels.push(green as u8);
+                rgb_pixels.push(blue as u8);
+            }
+
+            RgbImage::from_vec(width, height, rgb_pixels)
+                .map(DynamicImage::ImageRgb8)
+                .ok_or_else(|| {
+                    DecodeImageError::decode(format!(
+                        "scaled JPEG decoder returned invalid CMYK pixels for {}",
+                        path.display()
+                    ))
+                })
+        }
+    }
 }
 
 fn decode_heic(path: &Path) -> Result<DynamicImage, DecodeImageError> {
@@ -294,17 +458,34 @@ fn encode_png(image: &DynamicImage) -> Result<Vec<u8>, DecodeImageError> {
     Ok(cursor.into_inner())
 }
 
-fn read_orientation(path: &Path) -> u16 {
+fn read_exif_metadata(path: &Path, min_thumbnail_long_edge: u32) -> ExifMetadata {
     let file = match std::fs::File::open(path) {
         Ok(file) => file,
-        Err(_) => return 1,
+        Err(_) => {
+            return ExifMetadata {
+                orientation: 1,
+                embedded_thumbnail: None,
+            };
+        }
     };
     let mut reader = BufReader::new(file);
     let exif = match ExifReader::new().read_from_container(&mut reader) {
         Ok(exif) => exif,
-        Err(_) => return 1,
+        Err(_) => {
+            return ExifMetadata {
+                orientation: 1,
+                embedded_thumbnail: None,
+            };
+        }
     };
 
+    ExifMetadata {
+        orientation: orientation_from_exif(&exif),
+        embedded_thumbnail: embedded_thumbnail_image(&exif, min_thumbnail_long_edge),
+    }
+}
+
+fn orientation_from_exif(exif: &Exif) -> u16 {
     exif.get_field(Tag::Orientation, In::PRIMARY)
         .and_then(|field| field.value.get_uint(0))
         .and_then(|value| u16::try_from(value).ok())
@@ -312,9 +493,34 @@ fn read_orientation(path: &Path) -> u16 {
         .unwrap_or(1)
 }
 
+fn embedded_thumbnail_image(exif: &Exif, min_long_edge: u32) -> Option<DynamicImage> {
+    let offset = exif
+        .get_field(Tag::JPEGInterchangeFormat, In::THUMBNAIL)
+        .and_then(|field| field.value.get_uint(0))
+        .and_then(|value| usize::try_from(value).ok())?;
+    let length = exif
+        .get_field(Tag::JPEGInterchangeFormatLength, In::THUMBNAIL)
+        .and_then(|field| field.value.get_uint(0))
+        .and_then(|value| usize::try_from(value).ok())?;
+    let end = offset.checked_add(length)?;
+    let jpeg = exif.buf().get(offset..end)?;
+    let image = image::load_from_memory_with_format(jpeg, ImageFormat::Jpeg).ok()?;
+
+    if image.width().max(image.height()) < min_long_edge {
+        return None;
+    }
+
+    Some(image)
+}
+
+fn read_orientation(path: &Path) -> u16 {
+    read_exif_metadata(path, 0).orientation
+}
+
 #[doc(hidden)]
 pub mod __test_support {
     use super::*;
+    use jpeg_decoder::PixelFormat as JpegPixelFormat;
 
     pub fn normalized_extension_for(path: &Path) -> Result<String, DecodeImageError> {
         normalized_extension(path)
@@ -336,6 +542,13 @@ pub mod __test_support {
         decode_with_image_crate(path)
     }
 
+    pub fn load_thumbnail_source_for(
+        path: &Path,
+        max_edge: u32,
+    ) -> Result<LoadedImageData, DecodeImageError> {
+        load_thumbnail_source(path, max_edge)
+    }
+
     pub fn unsupported_error(message: &str) -> DecodeImageError {
         DecodeImageError::unsupported(message)
     }
@@ -350,5 +563,15 @@ pub mod __test_support {
 
     pub fn encode_error(message: &str) -> DecodeImageError {
         DecodeImageError::encode(message)
+    }
+
+    pub fn image_from_jpeg_pixels_for(
+        width: u32,
+        height: u32,
+        pixel_format: JpegPixelFormat,
+        pixels: Vec<u8>,
+        path: &Path,
+    ) -> Result<DynamicImage, DecodeImageError> {
+        image_from_jpeg_pixels(width, height, pixel_format, pixels, path)
     }
 }

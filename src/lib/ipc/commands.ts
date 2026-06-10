@@ -50,7 +50,7 @@ export interface DecodedImage {
 }
 
 export interface Thumbnail {
-  dataUrl: string;
+  url: string;
 }
 
 export interface OkResponse {

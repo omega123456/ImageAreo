@@ -1,4 +1,4 @@
-import { invoke, type InvokeArgs } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke, type InvokeArgs } from "@tauri-apps/api/core";
 
 import {
   IPC_COMMANDS,
@@ -46,10 +46,12 @@ export function decodeImage(request: DecodeImageRequest): Promise<DecodedImage> 
 export function generateThumbnail(
   request: GenerateThumbnailRequest,
 ): Promise<Thumbnail> {
-  return invokeCommand<Thumbnail>(
+  return invokeCommand<{ path: string }>(
     IPC_COMMANDS.generateThumbnail,
     request as unknown as InvokeArgs,
-  );
+  ).then((thumbnail) => ({
+    url: convertFileSrc(thumbnail.path),
+  }));
 }
 
 export function copyImageToClipboard(
