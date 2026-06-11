@@ -79,8 +79,7 @@ describe("FilmstripThumb", () => {
     expect(option).toHaveAttribute("aria-selected", "true");
     expect(option).toHaveClass("relative");
     expect(option).toHaveClass("z-10");
-    expect(option).toHaveClass("scale-110");
-    expect(option).toHaveClass("-translate-y-2");
+    expect(option).toHaveClass("scale-125");
     expect(option).toHaveClass("ring-2");
     expect(option).toHaveClass("ring-primary-500");
     expect(option).toHaveClass("ring-offset-2");

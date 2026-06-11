@@ -75,7 +75,6 @@ describe("Filmstrip", () => {
 
     const listbox = screen.getByRole("listbox", { name: "Folder images" });
     expect(listbox).toHaveClass("overflow-x-auto");
-    expect(listbox).toHaveClass("snap-x");
     const section = screen.getByRole("region", { name: "Filmstrip" });
     expect(section).toHaveClass("bg-strip-surface");
     expect(await screen.findByRole("option", { name: "img0.jpg" })).toBeInTheDocument();
@@ -187,6 +186,64 @@ describe("Filmstrip", () => {
 
     await fireEvent.keyDown(listbox, { key: "Home" });
     expect(onSelect).toHaveBeenCalledWith(0);
+  });
+
+  it("translates vertical wheel input into horizontal scrolling", async () => {
+    seedFolder(200);
+    render(Filmstrip);
+    await screen.findByRole("option", { name: "img0.jpg" });
+
+    const listbox = screen.getByRole("listbox", { name: "Folder images" });
+    let scrollLeft = 0;
+    Object.defineProperty(listbox, "scrollLeft", {
+      configurable: true,
+      get: () => scrollLeft,
+      set: (value: number) => {
+        scrollLeft = value;
+      },
+    });
+
+    await fireEvent.wheel(listbox, { deltaY: 120, deltaX: 0 });
+    expect(scrollLeft).toBe(120);
+  });
+
+  it("normalizes line-mode wheel deltas to a thumbnail stride", async () => {
+    seedFolder(200);
+    render(Filmstrip);
+    await screen.findByRole("option", { name: "img0.jpg" });
+
+    const listbox = screen.getByRole("listbox", { name: "Folder images" });
+    let scrollLeft = 0;
+    Object.defineProperty(listbox, "scrollLeft", {
+      configurable: true,
+      get: () => scrollLeft,
+      set: (value: number) => {
+        scrollLeft = value;
+      },
+    });
+
+    // deltaMode 1 (lines): one notch advances stride (192px thumb + 6px gap).
+    await fireEvent.wheel(listbox, { deltaY: 1, deltaX: 0, deltaMode: 1 });
+    expect(scrollLeft).toBe(198);
+  });
+
+  it("leaves horizontal-dominant wheel gestures to native scrolling", async () => {
+    seedFolder(200);
+    render(Filmstrip);
+    await screen.findByRole("option", { name: "img0.jpg" });
+
+    const listbox = screen.getByRole("listbox", { name: "Folder images" });
+    let scrollLeft = 0;
+    Object.defineProperty(listbox, "scrollLeft", {
+      configurable: true,
+      get: () => scrollLeft,
+      set: (value: number) => {
+        scrollLeft = value;
+      },
+    });
+
+    await fireEvent.wheel(listbox, { deltaY: 5, deltaX: 80 });
+    expect(scrollLeft).toBe(0);
   });
 
   it("reveals hover chevrons that nudge the scroll position", async () => {

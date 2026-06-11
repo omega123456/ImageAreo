@@ -48,11 +48,10 @@
   aria-label={entry.name}
   tabindex={tabbable ? 0 : -1}
   data-index={index}
-  class={`card preset-tonal-surface ${sizeClass} flex shrink-0 snap-center items-center justify-center overflow-hidden rounded-md p-0 outline-none transition-all duration-150 focus-visible:ring-2 focus-visible:ring-primary-500`}
+  class={`card preset-tonal-surface ${sizeClass} flex shrink-0 items-center justify-center overflow-hidden rounded-md p-0 outline-none transition-all duration-150 focus-visible:ring-2 focus-visible:ring-primary-500`}
   class:relative={active}
   class:z-10={active}
-  class:scale-110={active}
-  class:-translate-y-2={active}
+  class:scale-125={active}
   class:ring-2={active}
   class:ring-primary-500={active}
   class:ring-offset-2={active}
