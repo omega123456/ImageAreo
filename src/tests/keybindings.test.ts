@@ -38,6 +38,20 @@ describe("resolveBinding", () => {
     expect(resolveBinding(key({ key: "Escape" }))).toBe("escape");
   });
 
+  it("maps Ctrl+Cmd+F to fullscreen (requires BOTH ctrl and meta)", () => {
+    expect(
+      resolveBinding(key({ key: "f", ctrlKey: true, metaKey: true })),
+    ).toBe("toggleFullscreen");
+    expect(
+      resolveBinding(key({ key: "F", ctrlKey: true, metaKey: true })),
+    ).toBe("toggleFullscreen");
+  });
+
+  it("does not hijack plain Cmd+F or Ctrl+F (Find)", () => {
+    expect(resolveBinding(key({ key: "f", metaKey: true }))).toBeNull();
+    expect(resolveBinding(key({ key: "f", ctrlKey: true }))).toBeNull();
+  });
+
   it("returns null for unbound keys and for modified non-bracket keys", () => {
     expect(resolveBinding(key({ key: "a" }))).toBeNull();
     expect(resolveBinding(key({ key: "f", ctrlKey: true }))).toBeNull();

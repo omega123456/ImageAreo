@@ -8,6 +8,7 @@
     "core:window:allow-set-fullscreen",
     "dialog:default",
     "clipboard-manager:allow-write-image",
+    "clipboard-manager:allow-write-text",
     "store:default",
     "opener:default"
   ]

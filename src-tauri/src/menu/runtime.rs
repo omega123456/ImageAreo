@@ -40,6 +40,13 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     )?;
     menu.append(&file_menu)?;
 
+    // macOS reserves F11 (Mission Control), so it never reaches the menu item.
+    // AppKit routes the standard mac fullscreen chord (Ctrl+Cmd+F) reliably.
+    #[cfg(target_os = "macos")]
+    let fullscreen_accel = "Ctrl+Cmd+F";
+    #[cfg(not(target_os = "macos"))]
+    let fullscreen_accel = "F11";
+
     let view_menu = Submenu::with_items(
         app,
         "View",
@@ -54,7 +61,7 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
                 ids::TOGGLE_FULLSCREEN,
                 "Toggle Fullscreen",
                 true,
-                Some("F11"),
+                Some(fullscreen_accel),
             )?,
         ],
     )?;

@@ -36,14 +36,19 @@ export type KeyBinding = keyof KeyActions | null;
  * Resolve a keyboard event to its bound action name, or `null` if unbound.
  *
  * Pure and side-effect-free so the full key table can be asserted directly.
- * `Ctrl+[` / `Ctrl+]` rotate (also accepts Meta on macOS); `Esc` and `F11` are
- * always honoured (overlay/fullscreen handling decides whether anything
- * happens), while the rest are image-view actions.
+ * `Ctrl+[` / `Ctrl+]` rotate (also accepts Meta on macOS); `Ctrl+Cmd+F`
+ * toggles fullscreen (the mac chord — requires BOTH ctrl and meta so plain
+ * Cmd+F / Ctrl+F Find are not hijacked); `Esc` and `F11` are always honoured
+ * (overlay/fullscreen handling decides whether anything happens), while the
+ * rest are image-view actions.
  */
 export function resolveBinding(e: KeyboardEvent): KeyBinding {
   const mod = e.ctrlKey || e.metaKey;
 
   if (mod) {
+    if (e.ctrlKey && e.metaKey && (e.key === "f" || e.key === "F")) {
+      return "toggleFullscreen";
+    }
     if (e.key === "[") return "rotateLeft";
     if (e.key === "]") return "rotateRight";
     return null;

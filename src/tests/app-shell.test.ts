@@ -144,15 +144,17 @@ describe("App", () => {
     expect(zoomHudOverlay).toHaveClass("opacity-100", "visible");
 
     await ui.toggleFullscreen();
-    expect(toolbarOverlay).toHaveClass("opacity-0", "invisible");
+    // In fullscreen the toolbar slides (translate) instead of fading; the HUD,
+    // being canvas chrome, keeps fading.
+    expect(toolbarOverlay).toHaveClass("-translate-y-full");
     expect(zoomHudOverlay).toHaveClass("opacity-0", "invisible");
 
     await fireEvent.pointerMove(window);
-    expect(toolbarOverlay).toHaveClass("opacity-100", "visible");
+    expect(toolbarOverlay).toHaveClass("translate-y-0");
     expect(zoomHudOverlay).toHaveClass("opacity-100", "visible");
 
     await vi.advanceTimersByTimeAsync(CHROME_IDLE_MS);
-    expect(toolbarOverlay).toHaveClass("opacity-0", "invisible");
+    expect(toolbarOverlay).toHaveClass("-translate-y-full");
     expect(zoomHudOverlay).toHaveClass("opacity-0", "invisible");
   });
 
@@ -171,6 +173,33 @@ describe("App", () => {
     await fireEvent.click(screen.getByRole("button", { name: "Toggle fullscreen" }));
 
     expect(writeFullscreen).toHaveBeenCalledWith(false);
+  });
+
+  it("opens the context menu at the canvas center via a window-level Shift+F10", async () => {
+    viewer.load("asset://a.jpg", "a.jpg");
+    viewer.path = "/photos/a.jpg";
+    viewer.status = "ready";
+
+    render(App);
+
+    const canvas = screen.getByTestId("viewer-canvas");
+    canvas.getBoundingClientRect = () =>
+      ({ left: 100, top: 50, width: 200, height: 100 }) as DOMRect;
+
+    await fireEvent.keyDown(window, { key: "F10", shiftKey: true });
+
+    const menu = await screen.findByRole("menu", { name: "Image actions" });
+    expect(menu.style.left).toBe("200px");
+    expect(menu.style.top).toBe("100px");
+  });
+
+  it("ignores Shift+F10 when no image is loaded", async () => {
+    viewer.reset();
+    render(App);
+
+    await fireEvent.keyDown(window, { key: "F10", shiftKey: true });
+
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
   it("disables chrome fade transitions when reduced motion is enabled", () => {

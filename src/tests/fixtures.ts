@@ -40,8 +40,8 @@ export const IPC_FIXTURES: Record<string, IpcHandler> = {
   "plugin:dialog|save": () => null,
 
   // --- Tauri plugin: clipboard-manager ---
-  "plugin:clipboard-manager|write-text": () => null,
-  "plugin:clipboard-manager|read-text": () => "",
+  "plugin:clipboard-manager|write_text": () => null,
+  "plugin:clipboard-manager|read_text": () => "",
 
   // --- Tauri plugin: store ---
   "plugin:store|load": (args) => {

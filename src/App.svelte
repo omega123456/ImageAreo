@@ -23,6 +23,7 @@
   import type { ZoomPanController } from "./lib/utils/zoom-pan-controller";
 
   let controller = $state<ZoomPanController | null>(null);
+  let imageViewer = $state<ImageViewer | null>(null);
 
   const chromeVisibilityClass = $derived(
     chrome.chromeVisible
@@ -33,6 +34,46 @@
   const chromeTransitionClass = $derived(
     chrome.instant ? "transition-none" : "transition-opacity duration-200 ease-out",
   );
+
+  /**
+   * Toolbar chrome. Outside fullscreen it fades (opacity); in fullscreen it
+   * slides up out of view (`-translate-y-full`) with a 300ms transform so the
+   * canvas reads as edge-to-edge. Activity (any mouse move / keypress) reveals
+   * it again via {@link chrome.chromeVisible}.
+   */
+  const toolbarChromeClass = $derived(
+    !ui.fullscreen
+      ? `${chromeVisibilityClass} ${chromeTransitionClass}`
+      : chrome.chromeVisible
+        ? `translate-y-0 ${chrome.instant ? "transition-none" : "transition-transform duration-300 ease-out"}`
+        : `-translate-y-full pointer-events-none ${chrome.instant ? "transition-none" : "transition-transform duration-300 ease-out"}`,
+  );
+
+  /**
+   * Filmstrip chrome. Outside fullscreen it is always shown (product decision);
+   * in fullscreen it slides down out of view (`translate-y-full`) on idle and
+   * slides back on activity. Kept mounted (not `{#if}`-removed) so it animates.
+   */
+  const filmstripChromeClass = $derived(
+    !ui.fullscreen
+      ? "translate-y-0"
+      : chrome.chromeVisible
+        ? `translate-y-0 ${chrome.instant ? "transition-none" : "transition-transform duration-300 ease-out"}`
+        : `translate-y-full pointer-events-none ${chrome.instant ? "transition-none" : "transition-transform duration-300 ease-out"}`,
+  );
+
+  /**
+   * Hide the OS cursor while fullscreen chrome is idle; restore it on any
+   * activity (activity also reveals chrome, so the two move together).
+   */
+  $effect(() => {
+    if (typeof document === "undefined") return;
+    const hide = ui.fullscreen && !chrome.chromeVisible;
+    document.body.style.cursor = hide ? "none" : "";
+    return () => {
+      document.body.style.cursor = "";
+    };
+  });
 
   /** Esc closes the settings drawer first; otherwise exits fullscreen. */
   function handleEscape(): void {
@@ -49,6 +90,14 @@
 
   function handleWindowKeydown(event: KeyboardEvent): void {
     registerActivity();
+    // Shift+F10 is the keyboard context-menu request. Handle it at the window
+    // level: the canvas container is non-focusable, so a container-bound
+    // listener could never receive this. Only acts when an image is loaded.
+    if (event.shiftKey && event.key === "F10" && viewer.path) {
+      event.preventDefault();
+      imageViewer?.openContextMenuAtCenter();
+      return;
+    }
     onKeydown(event);
   }
 
@@ -127,10 +176,15 @@
 
 <div class="flex h-screen w-screen min-h-0 flex-col overflow-hidden">
   <main class="relative min-h-0 flex-1 overflow-hidden">
-    <ImageViewer bind:controller onOpen={handleOpen} />
+    <ImageViewer
+      bind:this={imageViewer}
+      bind:controller
+      onOpen={handleOpen}
+      fullscreen={ui.fullscreen}
+    />
 
     <div
-      class={`pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center px-3 ${chromeVisibilityClass} ${chromeTransitionClass}`}
+      class={`pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center px-3 ${toolbarChromeClass}`}
       data-testid="toolbar-overlay"
     >
       <div class="pointer-events-auto">
@@ -165,7 +219,9 @@
   </main>
 
   {#if galleryUi.visible}
-    <Filmstrip onSelect={handleGallerySelect} />
+    <div class={filmstripChromeClass} data-testid="filmstrip-overlay">
+      <Filmstrip onSelect={handleGallerySelect} />
+    </div>
   {/if}
 </div>
 

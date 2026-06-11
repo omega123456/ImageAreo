@@ -25,6 +25,8 @@ import {
   CornersOutIcon,
   CaretLeftIcon,
   CaretRightIcon,
+  ClipboardIcon,
+  CopyIcon,
   FilePlusIcon,
   FilmStripIcon,
   FolderOpenIcon,
@@ -32,9 +34,11 @@ import {
   GearIcon,
   ImageBrokenIcon,
   ImageIcon,
+  MagnifyingGlassIcon,
   MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon,
   PaletteIcon,
+  WarningCircleIcon,
   XIcon,
 } from "phosphor-svelte";
 import type { Component } from "svelte";
@@ -74,6 +78,11 @@ export const icons = {
   rotateLeft: ArrowCounterClockwiseIcon,
   rotateRight: ArrowClockwiseIcon,
 
+  // --- Context-menu actions ---
+  copyImage: CopyIcon,
+  copyPath: ClipboardIcon,
+  reveal: MagnifyingGlassIcon,
+
   // --- Chrome toggles / panels ---
   filmstrip: FilmStripIcon,
   settings: GearIcon,
@@ -87,6 +96,7 @@ export const icons = {
   // --- Indicators / states ---
   updateAvailable: ArrowCircleUpIcon,
   imageFailed: ImageBrokenIcon,
+  imageError: WarningCircleIcon,
   emptyPlaceholder: ImageIcon,
 } as const satisfies Record<string, Component>;
 
