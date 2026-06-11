@@ -6,8 +6,9 @@
   import ImageViewer from "./lib/components/ImageViewer.svelte";
   import ZoomHud from "./lib/components/ZoomHud.svelte";
   import SettingsDrawer from "./lib/components/SettingsDrawer.svelte";
-  import GalleryStrip from "./lib/components/GalleryStrip.svelte";
+  import Filmstrip from "./lib/components/Filmstrip.svelte";
   import { galleryUi } from "./lib/stores/gallery-ui.svelte";
+  import { chrome } from "./lib/stores/chrome.svelte";
   import { ui } from "./lib/stores/ui.svelte";
   import { viewer } from "./lib/stores/viewer.svelte";
   import { supportedExtensions } from "./lib/utils/format";
@@ -23,14 +24,37 @@
 
   let controller = $state<ZoomPanController | null>(null);
 
+  const chromeVisibilityClass = $derived(
+    chrome.chromeVisible
+      ? "visible opacity-100"
+      : "pointer-events-none invisible opacity-0",
+  );
+
+  const chromeTransitionClass = $derived(
+    chrome.instant ? "transition-none" : "transition-opacity duration-200 ease-out",
+  );
+
   /** Esc closes the settings drawer first; otherwise exits fullscreen. */
   function handleEscape(): void {
     if (ui.settingsOpen) {
       ui.closeSettings();
       return;
     }
-    ui.exitFullscreen();
+    void ui.exitFullscreen();
   }
+
+  function registerActivity(): void {
+    chrome.registerActivity();
+  }
+
+  function handleWindowKeydown(event: KeyboardEvent): void {
+    registerActivity();
+    onKeydown(event);
+  }
+
+  $effect(() => {
+    chrome.setFullscreen(ui.fullscreen);
+  });
 
   const onKeydown = createKeyHandler(
     {
@@ -42,7 +66,7 @@
       actualSize: () => controller?.setActualSize(),
       rotateLeft: () => viewer.rotateLeft(),
       rotateRight: () => viewer.rotateRight(),
-      toggleFullscreen: () => ui.toggleFullscreen(),
+      toggleFullscreen: () => void ui.toggleFullscreen(),
       escape: handleEscape,
     },
     () => viewer.status === "ready",
@@ -65,23 +89,25 @@
     await openPath(selected);
   }
 
-  // Phase 12: register file-association launch, drag-drop, and native-menu
-  // listeners, then complete the ready-handshake. The fullscreen handler is a
-  // placeholder until P16 owns it; gallery/settings dispatch to existing stores.
   onMount(() => {
     let unlisten: UnlistenFn | undefined;
+    chrome.start();
+    void ui.initializeFullscreen();
     void registerEntryPoints({
       openDialog: handleOpen,
       openFolderDialog: handleOpenFolder,
       fit: () => controller?.fitToScreen(),
       actualSize: () => controller?.setActualSize(),
       toggleGallery: () => galleryUi.toggle(),
-      toggleFullscreen: () => ui.toggleFullscreen(),
+      toggleFullscreen: () => void ui.toggleFullscreen(),
       openSettings: () => ui.openSettings(),
     }).then((fn) => {
       unlisten = fn;
     });
-    return () => unlisten?.();
+    return () => {
+      chrome.stop();
+      unlisten?.();
+    };
   });
 
   function toggleFitActual(): void {
@@ -97,30 +123,49 @@
   }
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<svelte:window onkeydown={handleWindowKeydown} onpointermove={registerActivity} />
 
-<div class="flex h-screen w-screen flex-col overflow-hidden">
-  <Toolbar
-    onOpen={handleOpen}
-    onOpenFolder={handleOpenFolder}
-    onFit={() => controller?.fitToScreen()}
-    onActualSize={() => controller?.setActualSize()}
-    onZoomIn={() => controller?.zoomIn()}
-    onZoomOut={() => controller?.zoomOut()}
-    onRotateLeft={() => viewer.rotateLeft()}
-    onRotateRight={() => viewer.rotateRight()}
-    onSettings={() => ui.openSettings()}
-    onToggleGallery={() => galleryUi.toggle()}
-    galleryVisible={galleryUi.visible}
-  />
-
-  <main class="relative flex flex-grow overflow-hidden">
+<div class="flex h-screen w-screen min-h-0 flex-col overflow-hidden">
+  <main class="relative min-h-0 flex-1 overflow-hidden">
     <ImageViewer bind:controller onOpen={handleOpen} />
-    <ZoomHud onToggle={toggleFitActual} />
+
+    <div
+      class={`pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center px-3 ${chromeVisibilityClass} ${chromeTransitionClass}`}
+      data-testid="toolbar-overlay"
+    >
+      <div class="pointer-events-auto">
+        <Toolbar
+          onOpen={handleOpen}
+          onOpenFolder={handleOpenFolder}
+          onFit={() => controller?.fitToScreen()}
+          onActualSize={() => controller?.setActualSize()}
+          onZoomIn={() => controller?.zoomIn()}
+          onZoomOut={() => controller?.zoomOut()}
+          onToggleFullscreen={() => void ui.toggleFullscreen()}
+          onRotateLeft={() => viewer.rotateLeft()}
+          onRotateRight={() => viewer.rotateRight()}
+          onSettings={() => ui.openSettings()}
+          onToggleGallery={() => galleryUi.toggle()}
+          galleryVisible={galleryUi.visible}
+          fullscreen={ui.fullscreen}
+        />
+      </div>
+    </div>
+
+    <div
+      class={`pointer-events-none absolute inset-0 z-20 ${chromeVisibilityClass} ${chromeTransitionClass}`}
+      data-testid="zoom-hud-overlay"
+    >
+      <div class="relative h-full w-full pointer-events-none">
+        <div class="pointer-events-auto">
+          <ZoomHud onToggle={toggleFitActual} />
+        </div>
+      </div>
+    </div>
   </main>
 
   {#if galleryUi.visible}
-    <GalleryStrip onSelect={handleGallerySelect} />
+    <Filmstrip onSelect={handleGallerySelect} />
   {/if}
 </div>
 

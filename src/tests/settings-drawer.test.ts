@@ -128,28 +128,35 @@ describe("SettingsDrawer", () => {
     );
   });
 
-  it("changes thumbnail count, size and sort and persists them", async () => {
+  it("does not render the removed count/size controls", async () => {
     ui.openSettings();
     render(SettingsDrawer, { props: { version: "1.0.0" } });
 
-    const count = screen.getByLabelText("Thumbnail count");
-    await fireEvent.change(count, { target: { value: "12" } });
-    expect(settings.thumbnailCount).toBe(12);
+    expect(screen.queryByLabelText("Thumbnail count")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Thumbnail size")).not.toBeInTheDocument();
+  });
 
-    const size = screen.getByLabelText("Thumbnail size");
-    await fireEvent.change(size, { target: { value: "96" } });
-    expect(settings.thumbnailSize).toBe(96);
+  it("changes density via the dropdown and persists it", async () => {
+    ui.openSettings();
+    render(SettingsDrawer, { props: { version: "1.0.0" } });
+
+    const density = screen.getByLabelText("Density");
+    await fireEvent.change(density, { target: { value: "small" } });
+    expect(settings.galleryDensity).toBe("small");
+
+    expect(ipc.calls("plugin:store|set")).toContainEqual(
+      expect.objectContaining({ key: "galleryDensity", value: "small" }),
+    );
+  });
+
+  it("changes sort and persists it", async () => {
+    ui.openSettings();
+    render(SettingsDrawer, { props: { version: "1.0.0" } });
 
     const sort = screen.getByLabelText("Sort order");
     await fireEvent.change(sort, { target: { value: "date" } });
     expect(settings.sortOrder).toBe("date");
 
-    expect(ipc.calls("plugin:store|set")).toContainEqual(
-      expect.objectContaining({ key: "thumbnailCount", value: 12 }),
-    );
-    expect(ipc.calls("plugin:store|set")).toContainEqual(
-      expect.objectContaining({ key: "thumbnailSize", value: 96 }),
-    );
     expect(ipc.calls("plugin:store|set")).toContainEqual(
       expect.objectContaining({ key: "sortOrder", value: "date" }),
     );

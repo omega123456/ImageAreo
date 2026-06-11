@@ -4,10 +4,22 @@ import type { SortOrder } from "../ipc/commands";
 
 export type ThemeSetting = "system" | "light" | "dark";
 
+export type GalleryDensity = "small" | "medium" | "large";
+
+export interface DensityDimensions {
+  stripHeight: number;
+  thumbnailSize: number;
+}
+
+export const DENSITY_DIMENSIONS: Record<GalleryDensity, DensityDimensions> = {
+  small: { stripHeight: 96, thumbnailSize: 80 },
+  medium: { stripHeight: 144, thumbnailSize: 128 },
+  large: { stripHeight: 208, thumbnailSize: 192 },
+};
+
 export interface SettingsSnapshot {
   theme: ThemeSetting;
-  thumbnailCount: number;
-  thumbnailSize: number;
+  galleryDensity: GalleryDensity;
   sortOrder: SortOrder;
 }
 
@@ -15,15 +27,13 @@ const STORE_PATH = "settings.json";
 
 const STORE_KEYS = {
   theme: "theme",
-  thumbnailCount: "thumbnailCount",
-  thumbnailSize: "thumbnailSize",
+  galleryDensity: "galleryDensity",
   sortOrder: "sortOrder",
 } as const;
 
 export const DEFAULT_SETTINGS: SettingsSnapshot = {
   theme: "system",
-  thumbnailCount: 7,
-  thumbnailSize: 120,
+  galleryDensity: "large",
   sortOrder: "name",
 };
 
@@ -31,24 +41,17 @@ function isThemeSetting(value: unknown): value is ThemeSetting {
   return value === "system" || value === "light" || value === "dark";
 }
 
+function isGalleryDensity(value: unknown): value is GalleryDensity {
+  return value === "small" || value === "medium" || value === "large";
+}
+
 function isSortOrder(value: unknown): value is SortOrder {
   return value === "name" || value === "date";
 }
 
-function clampInteger(
-  value: unknown,
-  fallback: number,
-  min: number,
-  max: number,
-): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
-  return Math.max(min, Math.min(max, Math.round(value)));
-}
-
 class SettingsStore {
   theme = $state<ThemeSetting>(DEFAULT_SETTINGS.theme);
-  thumbnailCount = $state<number>(DEFAULT_SETTINGS.thumbnailCount);
-  thumbnailSize = $state<number>(DEFAULT_SETTINGS.thumbnailSize);
+  galleryDensity = $state<GalleryDensity>(DEFAULT_SETTINGS.galleryDensity);
   sortOrder = $state<SortOrder>(DEFAULT_SETTINGS.sortOrder);
   isReady = $state<boolean>(false);
   loadError = $state<string | null>(null);
@@ -67,6 +70,10 @@ class SettingsStore {
 
   get canvasSurroundMode(): "light" | "dark" {
     return this.resolvedTheme;
+  }
+
+  get densityDimensions(): DensityDimensions {
+    return DENSITY_DIMENSIONS[this.galleryDensity];
   }
 
   async initialize(): Promise<void> {
@@ -88,23 +95,13 @@ class SettingsStore {
       await this.#store.init();
 
       const theme = await this.#store.get(STORE_KEYS.theme);
-      const thumbnailCount = await this.#store.get(STORE_KEYS.thumbnailCount);
-      const thumbnailSize = await this.#store.get(STORE_KEYS.thumbnailSize);
+      const galleryDensity = await this.#store.get(STORE_KEYS.galleryDensity);
       const sortOrder = await this.#store.get(STORE_KEYS.sortOrder);
 
       this.theme = isThemeSetting(theme) ? theme : DEFAULT_SETTINGS.theme;
-      this.thumbnailCount = clampInteger(
-        thumbnailCount,
-        DEFAULT_SETTINGS.thumbnailCount,
-        1,
-        50,
-      );
-      this.thumbnailSize = clampInteger(
-        thumbnailSize,
-        DEFAULT_SETTINGS.thumbnailSize,
-        48,
-        512,
-      );
+      this.galleryDensity = isGalleryDensity(galleryDensity)
+        ? galleryDensity
+        : DEFAULT_SETTINGS.galleryDensity;
       this.sortOrder = isSortOrder(sortOrder)
         ? sortOrder
         : DEFAULT_SETTINGS.sortOrder;
@@ -125,16 +122,12 @@ class SettingsStore {
     await this.#persist(STORE_KEYS.theme, theme);
   }
 
-  async setThumbnailCount(thumbnailCount: number): Promise<void> {
-    const next = clampInteger(thumbnailCount, this.thumbnailCount, 1, 50);
-    this.thumbnailCount = next;
-    await this.#persist(STORE_KEYS.thumbnailCount, next);
-  }
-
-  async setThumbnailSize(thumbnailSize: number): Promise<void> {
-    const next = clampInteger(thumbnailSize, this.thumbnailSize, 48, 512);
-    this.thumbnailSize = next;
-    await this.#persist(STORE_KEYS.thumbnailSize, next);
+  async setGalleryDensity(galleryDensity: GalleryDensity): Promise<void> {
+    const next = isGalleryDensity(galleryDensity)
+      ? galleryDensity
+      : this.galleryDensity;
+    this.galleryDensity = next;
+    await this.#persist(STORE_KEYS.galleryDensity, next);
   }
 
   async setSortOrder(sortOrder: SortOrder): Promise<void> {
@@ -145,8 +138,7 @@ class SettingsStore {
   snapshot(): SettingsSnapshot {
     return {
       theme: this.theme,
-      thumbnailCount: this.thumbnailCount,
-      thumbnailSize: this.thumbnailSize,
+      galleryDensity: this.galleryDensity,
       sortOrder: this.sortOrder,
     };
   }
@@ -182,8 +174,7 @@ class SettingsStore {
 
   #applySnapshot(snapshot: SettingsSnapshot): void {
     this.theme = snapshot.theme;
-    this.thumbnailCount = snapshot.thumbnailCount;
-    this.thumbnailSize = snapshot.thumbnailSize;
+    this.galleryDensity = snapshot.galleryDensity;
     this.sortOrder = snapshot.sortOrder;
   }
 

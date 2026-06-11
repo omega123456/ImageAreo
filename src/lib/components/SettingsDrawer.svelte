@@ -1,8 +1,13 @@
 <script lang="ts">
-  import { X, ArrowUpCircle } from "@lucide/svelte";
   import { getVersion } from "@tauri-apps/api/app";
+  import { fly } from "svelte/transition";
 
-  import { settings, type ThemeSetting } from "../stores/settings.svelte";
+  import { icons, ICON_SIZE, ICON_WEIGHT, iconWeightFor } from "../icons";
+  import {
+    settings,
+    type GalleryDensity,
+    type ThemeSetting,
+  } from "../stores/settings.svelte";
   import { folder } from "../stores/folder.svelte";
   import { ui } from "../stores/ui.svelte";
   import type { SortOrder } from "../ipc/commands";
@@ -21,6 +26,16 @@
 
   let { version = "", updateAvailable = false, updateVersion = "" }: Props =
     $props();
+
+  const CloseIcon = icons.close;
+  const SettingsIcon = icons.settings;
+  const UpdateIcon = icons.updateAvailable;
+
+  // Reduced-motion gates the slide-in; instant under the user preference.
+  const reducedMotion =
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  const slideDuration = reducedMotion ? 0 : 200;
 
   let fetchedVersion = $state("");
   const resolvedVersion = $derived(version || fetchedVersion);
@@ -46,7 +61,11 @@
     { value: "system", label: "System" },
   ];
 
-  const sizeOptions = [48, 64, 80, 96, 120];
+  const densityOptions: { value: GalleryDensity; label: string }[] = [
+    { value: "small", label: "Small" },
+    { value: "medium", label: "Medium" },
+    { value: "large", label: "Large" },
+  ];
 
   let panel = $state<HTMLElement | null>(null);
 
@@ -100,14 +119,10 @@
     await settings.setTheme(value);
   }
 
-  async function onCountChange(event: Event): Promise<void> {
-    const value = Number((event.currentTarget as HTMLInputElement).value);
-    await settings.setThumbnailCount(value);
-  }
-
-  async function onSizeChange(event: Event): Promise<void> {
-    const value = Number((event.currentTarget as HTMLSelectElement).value);
-    await settings.setThumbnailSize(value);
+  async function onDensityChange(event: Event): Promise<void> {
+    const value = (event.currentTarget as HTMLSelectElement)
+      .value as GalleryDensity;
+    await settings.setGalleryDensity(value);
   }
 
   async function onSortChange(event: Event): Promise<void> {
@@ -121,7 +136,7 @@
   <div class="fixed inset-0 z-40 flex justify-end" role="presentation">
     <button
       type="button"
-      class="absolute inset-0 bg-black/40"
+      class="absolute inset-0 bg-surface-950/40"
       aria-label="Close settings"
       tabindex="-1"
       onclick={close}
@@ -129,15 +144,19 @@
 
     <div
       bind:this={panel}
-      class="relative z-50 flex h-full w-80 flex-col gap-4 overflow-y-auto bg-surface-50-950 p-4 shadow-xl"
+      class="relative z-50 flex h-full w-80 flex-col gap-5 overflow-y-auto bg-chrome-surface p-5 shadow-xl scrollbar-thin scrollbar-thumb-surface-400-600"
       role="dialog"
       aria-modal="true"
       aria-label="Settings"
       tabindex="-1"
       onkeydown={onKeydown}
+      transition:fly={{ x: 320, duration: slideDuration, opacity: 1 }}
     >
       <header class="flex items-center justify-between">
-        <h2 class="text-lg font-semibold">Settings</h2>
+        <div class="flex items-center gap-2">
+          <SettingsIcon size={ICON_SIZE} weight={ICON_WEIGHT.regular} aria-hidden="true" />
+          <h2 class="text-base font-semibold">Settings</h2>
+        </div>
         <button
           type="button"
           class="btn-icon btn-icon-sm preset-tonal"
@@ -145,14 +164,12 @@
           title="Close"
           onclick={close}
         >
-          <X size={16} aria-hidden="true" />
+          <CloseIcon size={ICON_SIZE} weight={ICON_WEIGHT.regular} aria-hidden="true" />
         </button>
       </header>
 
-      <hr class="hr border-surface-300-700" />
-
       <section class="flex flex-col gap-2">
-        <h3 class="text-xs font-semibold tracking-wide text-surface-600-400 uppercase">
+        <h3 class="text-xs font-semibold tracking-wider text-surface-500 uppercase">
           Appearance
         </h3>
         <fieldset class="flex flex-col gap-1">
@@ -173,37 +190,21 @@
         </fieldset>
       </section>
 
-      <hr class="hr border-surface-300-700" />
-
       <section class="flex flex-col gap-3">
-        <h3 class="text-xs font-semibold tracking-wide text-surface-600-400 uppercase">
+        <h3 class="text-xs font-semibold tracking-wider text-surface-500 uppercase">
           Gallery Strip
         </h3>
 
         <label class="flex items-center justify-between gap-2 text-sm">
-          <span>Thumbnails</span>
-          <input
-            type="number"
-            class="input w-20"
-            min="1"
-            max="50"
-            step="1"
-            value={settings.thumbnailCount}
-            onchange={onCountChange}
-            aria-label="Thumbnail count"
-          />
-        </label>
-
-        <label class="flex items-center justify-between gap-2 text-sm">
-          <span>Size</span>
+          <span>Density</span>
           <select
             class="select w-28"
-            value={settings.thumbnailSize}
-            onchange={onSizeChange}
-            aria-label="Thumbnail size"
+            value={settings.galleryDensity}
+            onchange={onDensityChange}
+            aria-label="Density"
           >
-            {#each sizeOptions as size (size)}
-              <option value={size}>{size}px</option>
+            {#each densityOptions as option (option.value)}
+              <option value={option.value}>{option.label}</option>
             {/each}
           </select>
         </label>
@@ -222,10 +223,8 @@
         </label>
       </section>
 
-      <hr class="hr border-surface-300-700" />
-
       <section class="flex flex-col gap-2">
-        <h3 class="text-xs font-semibold tracking-wide text-surface-600-400 uppercase">
+        <h3 class="text-xs font-semibold tracking-wider text-surface-500 uppercase">
           About
         </h3>
         <p class="text-sm">
@@ -234,7 +233,11 @@
         {#if updateAvailable}
           <!-- Phase 17 fills the update-available behaviour; this is the slot. -->
           <div class="flex items-center gap-2 text-sm text-primary-600-400">
-            <ArrowUpCircle size={16} aria-hidden="true" />
+            <UpdateIcon
+              size={ICON_SIZE}
+              weight={iconWeightFor("updateAvailable", true)}
+              aria-hidden="true"
+            />
             <span>Update available{#if updateVersion}&nbsp;v{updateVersion}{/if}</span>
           </div>
         {/if}

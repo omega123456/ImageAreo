@@ -1,3 +1,5 @@
+import { readFullscreen, writeFullscreen } from "../utils/native-window";
+
 /**
  * Shared, app-wide UI-state runes that are not tied to a single component tree.
  *
@@ -7,11 +9,6 @@
  */
 class UiStore {
   settingsOpen = $state<boolean>(false);
-  /**
-   * Shared fullscreen flag. Phase 11 only toggles this state (via the keyboard
-   * and the native View menu); Phase 16 owns the actual fullscreen visuals and
-   * window-level call, reacting to this flag.
-   */
   fullscreen = $state<boolean>(false);
 
   openSettings(): void {
@@ -26,12 +23,21 @@ class UiStore {
     this.settingsOpen = !this.settingsOpen;
   }
 
-  toggleFullscreen(): void {
-    this.fullscreen = !this.fullscreen;
+  async initializeFullscreen(): Promise<void> {
+    this.fullscreen = await readFullscreen();
   }
 
-  exitFullscreen(): void {
-    this.fullscreen = false;
+  async toggleFullscreen(): Promise<void> {
+    await this.setFullscreen(!this.fullscreen);
+  }
+
+  async exitFullscreen(): Promise<void> {
+    await this.setFullscreen(false);
+  }
+
+  async setFullscreen(fullscreen: boolean): Promise<void> {
+    await writeFullscreen(fullscreen);
+    this.fullscreen = fullscreen;
   }
 }
 

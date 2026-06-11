@@ -1,11 +1,28 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const { readFullscreen, writeFullscreen } = vi.hoisted(() => ({
+  readFullscreen: vi.fn(async () => false),
+  writeFullscreen: vi.fn(async () => {}),
+}));
+
+vi.mock("../lib/utils/native-window", () => ({
+  readFullscreen,
+  writeFullscreen,
+}));
 
 import { ui } from "../lib/stores/ui.svelte";
 
 describe("ui store", () => {
+  beforeEach(() => {
+    readFullscreen.mockClear();
+    writeFullscreen.mockClear();
+    readFullscreen.mockResolvedValue(false);
+    writeFullscreen.mockResolvedValue(undefined);
+  });
+
   afterEach(() => {
     ui.closeSettings();
-    ui.exitFullscreen();
+    ui.fullscreen = false;
   });
 
   it("opens, closes and toggles the settings drawer", () => {
@@ -23,17 +40,29 @@ describe("ui store", () => {
     expect(ui.settingsOpen).toBe(false);
   });
 
-  it("toggles and exits fullscreen", () => {
-    expect(ui.fullscreen).toBe(false);
+  it("syncs fullscreen from the native window on startup", async () => {
+    readFullscreen.mockResolvedValue(true);
 
-    ui.toggleFullscreen();
+    await ui.initializeFullscreen();
+
+    expect(readFullscreen).toHaveBeenCalledOnce();
     expect(ui.fullscreen).toBe(true);
+  });
 
-    ui.toggleFullscreen();
+  it("toggles and exits fullscreen through the native window seam", async () => {
     expect(ui.fullscreen).toBe(false);
 
-    ui.toggleFullscreen();
-    ui.exitFullscreen();
+    await ui.toggleFullscreen();
+    expect(ui.fullscreen).toBe(true);
+    expect(writeFullscreen).toHaveBeenNthCalledWith(1, true);
+
+    await ui.toggleFullscreen();
     expect(ui.fullscreen).toBe(false);
+    expect(writeFullscreen).toHaveBeenNthCalledWith(2, false);
+
+    await ui.toggleFullscreen();
+    await ui.exitFullscreen();
+    expect(ui.fullscreen).toBe(false);
+    expect(writeFullscreen).toHaveBeenNthCalledWith(4, false);
   });
 });

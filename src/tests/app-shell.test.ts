@@ -1,12 +1,22 @@
-import { fireEvent, render, screen } from "@testing-library/svelte";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { openDialog } = vi.hoisted(() => ({
   openDialog: vi.fn(),
 }));
 
+const { readFullscreen, writeFullscreen } = vi.hoisted(() => ({
+  readFullscreen: vi.fn(async () => false),
+  writeFullscreen: vi.fn(async () => {}),
+}));
+
 vi.mock("@tauri-apps/plugin-dialog", () => ({
   open: openDialog,
+}));
+
+vi.mock("../lib/utils/native-window", () => ({
+  readFullscreen,
+  writeFullscreen,
 }));
 
 vi.mock("../lib/utils/open-entry", async () => {
@@ -21,16 +31,58 @@ vi.mock("../lib/utils/open-entry", async () => {
 });
 
 import App from "../App.svelte";
+import { CHROME_IDLE_MS, chrome } from "../lib/stores/chrome.svelte";
+import { folder } from "../lib/stores/folder.svelte";
+import { galleryUi } from "../lib/stores/gallery-ui.svelte";
 import { ui } from "../lib/stores/ui.svelte";
 import { viewer } from "../lib/stores/viewer.svelte";
 import { supportedExtensions } from "../lib/utils/format";
 
+let reducedMotionValue = false;
+
+function setReducedMotion(matches: boolean): void {
+  reducedMotionValue = matches;
+}
+
+Object.defineProperty(window, "matchMedia", {
+  writable: true,
+  configurable: true,
+  value: (query: string) => ({
+    get matches() {
+      return query.includes("prefers-reduced-motion") ? reducedMotionValue : false;
+    },
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }),
+});
+
 describe("App", () => {
   beforeEach(() => {
+    vi.useFakeTimers();
     openDialog.mockReset();
     openDialog.mockResolvedValue(null);
+    readFullscreen.mockReset();
+    readFullscreen.mockResolvedValue(false);
+    writeFullscreen.mockReset();
+    writeFullscreen.mockResolvedValue(undefined);
+    chrome.stop();
+    folder.reset();
+    galleryUi.reset();
     ui.closeSettings();
+    ui.fullscreen = false;
     viewer.reset();
+    setReducedMotion(false);
+  });
+
+  afterEach(() => {
+    chrome.stop();
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
   });
 
   it("uses the full supported extension set for File > Open", async () => {
@@ -60,5 +112,73 @@ describe("App", () => {
 
     await fireEvent.keyDown(sortSelect, { key: "Escape" });
     expect(ui.settingsOpen).toBe(false);
+  });
+
+  it("renders overlay chrome over the viewer, auto-hides on idle, and keeps the filmstrip visible", async () => {
+    folder.images = [
+      { path: "/photos/img1.jpg", name: "img1.jpg", modified: 1 },
+      { path: "/photos/img2.jpg", name: "img2.jpg", modified: 2 },
+    ];
+    folder.currentIndex = 0;
+    viewer.status = "ready";
+
+    render(App);
+
+    const toolbarOverlay = screen.getByTestId("toolbar-overlay");
+    const zoomHudOverlay = screen.getByTestId("zoom-hud-overlay");
+    const filmstrip = screen.getByLabelText("Filmstrip");
+
+    expect(toolbarOverlay).toHaveClass("absolute", "opacity-100", "visible");
+    expect(zoomHudOverlay).toHaveClass("absolute", "opacity-100", "visible");
+    expect(filmstrip).toBeInTheDocument();
+
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(CHROME_IDLE_MS);
+
+    expect(toolbarOverlay).toHaveClass("opacity-0", "invisible", "pointer-events-none");
+    expect(zoomHudOverlay).toHaveClass("opacity-0", "invisible", "pointer-events-none");
+    expect(filmstrip).toBeInTheDocument();
+
+    await fireEvent.pointerMove(window);
+    expect(toolbarOverlay).toHaveClass("opacity-100", "visible");
+    expect(zoomHudOverlay).toHaveClass("opacity-100", "visible");
+
+    await ui.toggleFullscreen();
+    expect(toolbarOverlay).toHaveClass("opacity-0", "invisible");
+    expect(zoomHudOverlay).toHaveClass("opacity-0", "invisible");
+
+    await fireEvent.pointerMove(window);
+    expect(toolbarOverlay).toHaveClass("opacity-100", "visible");
+    expect(zoomHudOverlay).toHaveClass("opacity-100", "visible");
+
+    await vi.advanceTimersByTimeAsync(CHROME_IDLE_MS);
+    expect(toolbarOverlay).toHaveClass("opacity-0", "invisible");
+    expect(zoomHudOverlay).toHaveClass("opacity-0", "invisible");
+  });
+
+  it("hydrates fullscreen state from the native window and toggles the native mode", async () => {
+    readFullscreen.mockResolvedValue(true);
+
+    render(App);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Toggle fullscreen" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+
+    await fireEvent.click(screen.getByRole("button", { name: "Toggle fullscreen" }));
+
+    expect(writeFullscreen).toHaveBeenCalledWith(false);
+  });
+
+  it("disables chrome fade transitions when reduced motion is enabled", () => {
+    setReducedMotion(true);
+
+    render(App);
+
+    expect(screen.getByTestId("toolbar-overlay")).toHaveClass("transition-none");
+    expect(screen.getByTestId("zoom-hud-overlay")).toHaveClass("transition-none");
   });
 });

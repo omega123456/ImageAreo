@@ -21,10 +21,11 @@
     "test:all": "pnpm test:coverage && pnpm test:rust:coverage && pnpm test:e2e"
   },
   "dependencies": {
-    "@lucide/svelte": "^1.17.0",
+    "@fontsource-variable/inter": "^5.2.8",
     "@tauri-apps/api": "^2.11.0",
     "@tauri-apps/plugin-dialog": "^2.7.1",
-    "@tauri-apps/plugin-store": "^2.4.3"
+    "@tauri-apps/plugin-store": "^2.4.3",
+    "phosphor-svelte": "^3.1.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",

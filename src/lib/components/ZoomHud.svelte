@@ -29,7 +29,7 @@
 {#if viewer.status === "ready"}
   <button
     type="button"
-    class="absolute right-3 bottom-3 z-10 rounded-md bg-black/60 px-2 py-1 font-mono text-xs text-white/80 backdrop-blur-sm"
+    class="absolute right-3 bottom-3 z-10 inline-flex min-w-16 items-center justify-center rounded-full bg-hud-surface px-3 py-1 font-mono text-xs text-surface-900-100 backdrop-blur-sm"
     aria-label="Toggle between actual size and fit to screen"
     title="Toggle 100% / Fit"
     onclick={onToggle}

@@ -65,7 +65,7 @@
         aria-live="polite"
       >
         <div
-          class="size-12 animate-spin rounded-full border-4 border-surface-500 border-t-transparent"
+          class="size-10 animate-spin rounded-full border-2 border-surface-400-600 border-t-primary-500"
           role="status"
           aria-label="Loading image"
         ></div>

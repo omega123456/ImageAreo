@@ -15,10 +15,11 @@
 - **Shell:** Tauri 2 (Rust backend + native OS webview)
 - **Frontend:** Svelte 5 (Runes), plain Svelte + Vite SPA (no SvelteKit)
 - **UI:** Skeleton UI v4 + Tailwind CSS 4
-- **Icons:** Lucide (`lucide-svelte`)
+- **Icons:** Phosphor (`phosphor-svelte`)
+- **Font:** Inter Variable (`@fontsource-variable/inter`)
 - **Package manager:** pnpm
 - **Key crates:** `image`, `heic`, `rawler`, `jxl-oxide`, `fast_image_resize`, `tauri-plugin-{store,dialog,opener,updater,clipboard-manager}`
-- **Key packages:** `@skeletonlabs/skeleton`, `tailwind-scrollbar`, `@humanspeak/svelte-virtual-list`
+- **Key packages:** `@skeletonlabs/skeleton`, `tailwind-scrollbar`
 
 ## Directory Structure
 
@@ -64,7 +65,13 @@ e2e/                      # Playwright specs
 
 - **State:** Svelte 5 runes in `.svelte.ts` store modules. No external state library.
 - **IPC boundary:** `invoke()` is called **only** from `src/lib/ipc/`. Components/stores call typed wrappers, never `invoke` directly. This keeps the IPC seam mockable.
+- **Tauri permissions/capabilities are mandatory plumbing.** Any new frontend use of a Tauri core API or plugin command must be checked against `src-tauri/capabilities/default.json` and granted explicitly if needed.
+  If a command works in types/JS but fails at runtime with `not allowed`, this is usually a missing capability permission, not a logic bug.
+  Example: native fullscreen via `@tauri-apps/api/window` requires the matching window permission such as `core:window:allow-set-fullscreen` in [src-tauri/capabilities/default.json](/Users/jozsef.kovacs/Projects/ImageAero/src-tauri/capabilities/default.json).
+  When adding a new Tauri permission, update tests for the calling seam and restart `pnpm tauri:dev` so the capability change is actually loaded.
 - **Format routing:** only `jpg/jpeg/png/gif/webp` are "native" (rendered via `convertFileSrc`). Every other supported format (avif, tif/tiff, bmp, ico, heic/heif, raw types, jxl) goes through the Rust `decode_image` command.
+- **Filmstrip:** hand-windowed horizontal carousel; no virtualization plugin dependency.
+- **Gallery settings:** a single `galleryDensity` setting replaces the old thumbnail count and size controls.
 - **Comments:** minimal — only where the *why* is non-obvious.
 - **Accessibility:** `aria-label` on all icon-only buttons; keyboard-operable menus; focus-trapped drawer; debounced `aria-live` for the zoom indicator.
 

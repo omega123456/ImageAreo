@@ -20,6 +20,25 @@ if (typeof globalThis.ResizeObserver === "undefined") {
   } as unknown as typeof globalThis.ResizeObserver;
 }
 
+// Element.animate — Web Animations API, used by Svelte transitions (e.g. the
+// settings drawer slide-in). jsdom does not implement it; return a no-op
+// animation stub so transition code paths run headlessly.
+if (typeof Element.prototype.animate === "undefined") {
+  Element.prototype.animate = function () {
+    return {
+      cancel: () => {},
+      finished: Promise.resolve(),
+      onfinish: null,
+      play: () => {},
+      pause: () => {},
+      finish: () => {},
+      reverse: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    } as unknown as Animation;
+  };
+}
+
 // matchMedia — used by the system-follow theme.
 if (typeof window.matchMedia === "undefined") {
   Object.defineProperty(window, "matchMedia", {
