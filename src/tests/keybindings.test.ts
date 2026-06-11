@@ -123,6 +123,24 @@ describe("createKeyHandler", () => {
     expect(actions.toggleFullscreen).toHaveBeenCalledOnce();
   });
 
+  it("can allow prev/next while not ready without enabling other image actions", () => {
+    const actions = makeActions();
+    const handler = createKeyHandler(
+      actions,
+      () => false,
+      () => false,
+      (binding) => binding === "prev" || binding === "next",
+    );
+
+    handler(key({ key: "ArrowRight" }));
+    handler(key({ key: "ArrowLeft" }));
+    handler(key({ key: "+" }));
+
+    expect(actions.next).toHaveBeenCalledOnce();
+    expect(actions.prev).toHaveBeenCalledOnce();
+    expect(actions.zoomIn).not.toHaveBeenCalled();
+  });
+
   it("suppresses bindings while a text input is focused", () => {
     const actions = makeActions();
     const handler = createKeyHandler(actions, () => true);

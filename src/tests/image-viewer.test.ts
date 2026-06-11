@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/svelte";
+import { render, screen, fireEvent, waitFor } from "@testing-library/svelte";
 import ImageViewer from "../lib/components/ImageViewer.svelte";
 import { viewer } from "../lib/stores/viewer.svelte";
 
 describe("ImageViewer", () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
     viewer.reset();
     // jsdom does not run rAF naturally; make it synchronous for fit-on-load.
     vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((cb) => {
@@ -38,6 +39,13 @@ describe("ImageViewer", () => {
     expect(screen.getByRole("status", { name: "Loading image" })).toBeInTheDocument();
   });
 
+  it("renders only the loading UI when loading without a source", () => {
+    viewer.load("", "photo.jpg");
+    render(ImageViewer);
+    expect(screen.getByRole("status", { name: "Loading image" })).toBeInTheDocument();
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+  });
+
   it("marks the image ready on load and applies a transform", async () => {
     viewer.load("asset://photo.jpg", "photo.jpg");
     render(ImageViewer);
@@ -57,6 +65,26 @@ describe("ImageViewer", () => {
     expect(viewer.status).toBe("error");
   });
 
+  it("keeps the previous image visible while the next image is loading", async () => {
+    viewer.load("asset://first.jpg", "first.jpg");
+    render(ImageViewer);
+    const img = screen.getByRole("img", { name: "first.jpg" }) as HTMLImageElement;
+    Object.defineProperty(img, "naturalWidth", { value: 640, configurable: true });
+    Object.defineProperty(img, "naturalHeight", { value: 480, configurable: true });
+    await fireEvent.load(img);
+
+    viewer.name = "next.jpg";
+    viewer.status = "loading";
+
+    await waitFor(() => {
+      expect(screen.getByRole("status", { name: "Loading image" })).toBeInTheDocument();
+      expect(screen.getByRole("img", { name: "first.jpg" })).toHaveAttribute(
+        "src",
+        "asset://first.jpg",
+      );
+    });
+  });
+
   it("applies the EXIF orientation transform for a rotated image", () => {
     viewer.load("data:image/png;base64,AAAA", "shot.heic");
     viewer.orientation = 6;
@@ -71,6 +99,20 @@ describe("ImageViewer", () => {
     const img = screen.getByRole("img") as HTMLImageElement;
     // Only the user rotation(0deg) should be present, not an EXIF fragment.
     expect(img.getAttribute("style")).toContain("rotate(0deg)");
+  });
+
+  it("recreates the img element when the source changes", async () => {
+    viewer.load("asset://first.jpg", "first.jpg");
+    render(ImageViewer);
+    const first = screen.getByRole("img", { name: "first.jpg" });
+
+    viewer.load("asset://second.jpg", "second.jpg");
+
+    const second = await waitFor(() => {
+      return screen.getByRole("img", { name: "second.jpg" });
+    });
+    expect(second).not.toBe(first);
+    expect(second).toHaveAttribute("src", "asset://second.jpg");
   });
 
   it("exposes a controller via the bound prop and tears it down on unmount", () => {

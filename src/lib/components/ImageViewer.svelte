@@ -25,9 +25,8 @@
   let container = $state<HTMLDivElement | null>(null);
   let contextMenu = $state<ContextMenu | null>(null);
 
-  // The last source that reached the "ready" state. Shown ghosted behind the
-  // spinner while the next image decodes, so navigation doesn't flash to empty.
-  let lastReadySource = $state<string>("");
+  // Preserve the last displayed name while a new image is decoding so the old
+  // image does not momentarily get announced with the next image's filename.
   let lastReadyName = $state<string | null>(null);
 
   // Re-attempt opening the failed image (the path is still on the store).
@@ -67,7 +66,6 @@
   function onImageLoad(e: Event): void {
     const img = e.currentTarget as HTMLImageElement;
     viewer.setReady(img.naturalWidth, img.naturalHeight);
-    lastReadySource = viewer.source;
     lastReadyName = viewer.name;
     // Defer the fit to the next frame so layout has settled — a cached/
     // synchronous decode can fire `load` before the container has a real size.
@@ -106,20 +104,23 @@
     <ErrorState onRetry={retry} onOpenAnother={onOpen} />
   {:else}
     {#if viewer.status === "loading"}
-      <LoadingState previousSource={lastReadySource} previousName={lastReadyName} />
+      <LoadingState />
     {/if}
 
-    <img
-      src={viewer.source}
-      alt={viewer.name ?? "Image"}
-      draggable="false"
-      decoding="async"
-      class="max-w-none origin-center select-none"
-      class:opacity-0={viewer.status !== "ready"}
-      style="transform: {transform};"
-      onload={onImageLoad}
-      onerror={onImageError}
-    />
+    {#if viewer.source}
+      {#key viewer.source}
+        <img
+          src={viewer.source}
+          alt={(viewer.status === "loading" && viewer.source ? lastReadyName ?? viewer.name : viewer.name) ?? "Image"}
+          draggable="false"
+          decoding="async"
+          class="max-w-none origin-center select-none"
+          style="transform: {transform};"
+          onload={onImageLoad}
+          onerror={onImageError}
+        />
+      {/key}
+    {/if}
   {/if}
 </div>
 

@@ -78,6 +78,12 @@ if (!HTMLElement.prototype.releasePointerCapture) {
   HTMLElement.prototype.releasePointerCapture = function () {};
 }
 
+if (typeof HTMLImageElement.prototype.decode === "undefined") {
+  HTMLImageElement.prototype.decode = function () {
+    return Promise.resolve();
+  };
+}
+
 if (typeof window !== "undefined") {
   const internals = ((window as typeof window & { __TAURI_INTERNALS__?: Record<string, unknown> })
     .__TAURI_INTERNALS__ ??= {});

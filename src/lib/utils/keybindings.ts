@@ -101,6 +101,7 @@ export function createKeyHandler(
   actions: KeyActions,
   isReady: () => boolean,
   isBlocked: (binding: KeyBinding) => boolean = () => false,
+  isAllowedWhileNotReady: (binding: KeyBinding) => boolean = () => false,
 ): (e: KeyboardEvent) => void {
   return (e: KeyboardEvent) => {
     if (isTextInput(e.target)) return;
@@ -108,7 +109,13 @@ export function createKeyHandler(
     const binding = resolveBinding(e);
     if (binding === null) return;
     if (isBlocked(binding)) return;
-    if (!ALWAYS_ACTIVE.has(binding) && !isReady()) return;
+    if (
+      !ALWAYS_ACTIVE.has(binding) &&
+      !isReady() &&
+      !isAllowedWhileNotReady(binding)
+    ) {
+      return;
+    }
 
     e.preventDefault();
     actions[binding]();

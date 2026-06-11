@@ -14,6 +14,7 @@ vi.mock("@tauri-apps/api/core", async () => {
 
 describe("viewer store", () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
     viewer.reset();
   });
 
@@ -80,7 +81,7 @@ describe("viewer store", () => {
     await viewer.openPath("/photos/photo.jpg");
 
     expect(viewer.path).toBe("/photos/photo.jpg");
-    expect(viewer.status).toBe("loading");
+    expect(viewer.status).toBe("ready");
     expect(viewer.name).toBe("photo.jpg");
     expect(viewer.zoom).toBe(1);
     expect(viewer.pan).toEqual({ x: 0, y: 0 });
@@ -91,7 +92,49 @@ describe("viewer store", () => {
     await viewer.openPath("/photos/photo.png");
     expect(ipc.calls("decode_image")).toHaveLength(0);
     expect(viewer.source).toContain("asset://");
+    expect(viewer.status).toBe("ready");
+  });
+
+  it("openPath() flips to loading synchronously and keeps the old source until native decode resolves", async () => {
+    let resolveDecode: (() => void) | undefined;
+    vi.spyOn(HTMLImageElement.prototype, "decode").mockImplementation(() => {
+      return new Promise<void>((resolve) => {
+        resolveDecode = resolve;
+      });
+    });
+    viewer.source = "asset://current.jpg";
+    viewer.name = "current.jpg";
+    viewer.status = "ready";
+    viewer.zoom = 4;
+    viewer.pan = { x: 25, y: 15 };
+
+    const openPromise = viewer.openPath("/photos/next.jpg");
+
+    expect(viewer.path).toBe("/photos/next.jpg");
+    expect(viewer.name).toBe("next.jpg");
     expect(viewer.status).toBe("loading");
+    expect(viewer.source).toBe("asset://current.jpg");
+    expect(viewer.zoom).toBe(4);
+    expect(viewer.pan).toEqual({ x: 25, y: 15 });
+
+    resolveDecode?.();
+    await openPromise;
+
+    expect(viewer.status).toBe("ready");
+    expect(viewer.source).toContain("/photos/next.jpg");
+    expect(viewer.zoom).toBe(1);
+    expect(viewer.pan).toEqual({ x: 0, y: 0 });
+  });
+
+  it("openPath() sets error status when native decode fails", async () => {
+    vi.spyOn(HTMLImageElement.prototype, "decode").mockRejectedValue(
+      new Error("broken image"),
+    );
+
+    await viewer.openPath("/photos/broken.jpg");
+
+    expect(viewer.status).toBe("error");
+    expect(viewer.path).toBe("/photos/broken.jpg");
   });
 
   it("openPath() routes exotic formats through decode_image", async () => {
@@ -190,6 +233,33 @@ describe("viewer store", () => {
     // The fast load succeeded; the stale failure must not flip us to error.
     expect(viewer.status).toBe("ready");
     expect(viewer.source).toBe("data:image/png;base64,OK");
+  });
+
+  it("openPath() ignores a stale native decode result when superseded", async () => {
+    let resolveFirst: (() => void) | undefined;
+    const decodeSpy = vi
+      .spyOn(HTMLImageElement.prototype, "decode")
+      .mockImplementation(function (this: HTMLImageElement) {
+        const currentSrc = this.getAttribute("src") ?? "";
+        if (currentSrc.includes("slow.jpg")) {
+          return new Promise<void>((resolve) => {
+            resolveFirst = resolve;
+          });
+        }
+        return Promise.resolve();
+      });
+
+    const first = viewer.openPath("/photos/slow.jpg");
+    const firstImage = decodeSpy.mock.instances[0] as HTMLImageElement | undefined;
+
+    await viewer.openPath("/photos/fast.jpg");
+    resolveFirst?.();
+    await first;
+
+    expect(viewer.path).toBe("/photos/fast.jpg");
+    expect(viewer.source).toContain("/photos/fast.jpg");
+    expect(viewer.status).toBe("ready");
+    expect(firstImage?.getAttribute("src") ?? "").toBe("");
   });
 
   it("reset() restores orientation to the identity value", async () => {

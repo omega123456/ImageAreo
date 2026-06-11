@@ -120,6 +120,10 @@
     },
     () => viewer.status === "ready",
     (binding) => ui.settingsOpen && binding !== "escape",
+    (binding) =>
+      viewer.path !== null &&
+      viewer.status === "loading" &&
+      (binding === "prev" || binding === "next"),
   );
 
   async function handleOpen(): Promise<void> {

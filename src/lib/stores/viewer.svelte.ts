@@ -22,6 +22,9 @@ export interface Pan {
 }
 
 class ViewerStore {
+  #openRequestId = 0;
+  #pendingDecodeImage: HTMLImageElement | null = null;
+
   /** Original filesystem path of the loaded image, when present. */
   path = $state<string | null>(null);
   /** Resolved image source (asset URL for native; data URL for backend in P9). */
@@ -61,10 +64,49 @@ class ViewerStore {
 
   /** Begin loading a new source; resets the transform to a centered fit. */
   load(source: string, name?: string): void {
+    this.#openRequestId += 1;
+    this.#cancelPendingDecode();
     this.resetTransform();
     this.source = source;
     this.name = name ?? null;
     this.status = "loading";
+  }
+
+  /** Stop any detached decode work that has not yet completed. */
+  #cancelPendingDecode(): void {
+    if (!this.#pendingDecodeImage) {
+      return;
+    }
+    this.#pendingDecodeImage.src = "";
+    this.#pendingDecodeImage = null;
+  }
+
+  /**
+   * Decode an image source off the main render path before swapping it into the
+   * visible `<img>`, so the loading state can paint immediately.
+   */
+  async #decodeOffThread(
+    source: string,
+    requestId: number,
+  ): Promise<{ width: number; height: number }> {
+    const img = new Image();
+    this.#pendingDecodeImage = img;
+    img.decoding = "async";
+    img.src = source;
+    try {
+      await img.decode();
+      if (requestId !== this.#openRequestId) {
+        throw new Error("decode superseded");
+      }
+      return {
+        width: img.naturalWidth,
+        height: img.naturalHeight,
+      };
+    } finally {
+      if (this.#pendingDecodeImage === img) {
+        this.#pendingDecodeImage = null;
+      }
+    }
   }
 
   /**
@@ -77,28 +119,44 @@ class ViewerStore {
    * transitions to the error status.
    */
   async openPath(path: string): Promise<void> {
+    const requestId = ++this.#openRequestId;
+    this.#cancelPendingDecode();
     const name = path.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || "Image";
-
-    if (isNativeFormat(path)) {
-      this.load(convertFileSrc(path), name);
-      this.path = path;
-      return;
-    }
-
-    // Exotic format: decode in Rust. `load()` resets the transform and marks
-    // the viewer loading before the (potentially slow) decode round-trip.
-    this.load("", name);
     this.path = path;
+    this.name = name;
+    this.status = "loading";
 
     try {
+      if (isNativeFormat(path)) {
+        const source = convertFileSrc(path);
+        const decoded = await this.#decodeOffThread(source, requestId);
+        if (requestId !== this.#openRequestId || this.path !== path) {
+          return;
+        }
+        this.resetTransform();
+        this.source = source;
+        this.setReady(decoded.width, decoded.height);
+        return;
+      }
+
       const decoded = await decodeImage({ path });
-      // A newer load may have superseded this one while we awaited the decode.
-      if (this.path !== path) return;
+      if (requestId !== this.#openRequestId || this.path !== path) {
+        return;
+      }
+
+      await this.#decodeOffThread(decoded.dataUrl, requestId);
+      if (requestId !== this.#openRequestId || this.path !== path) {
+        return;
+      }
+
+      this.resetTransform();
       this.source = decoded.dataUrl;
       this.orientation = decoded.orientation;
       this.setReady(decoded.width, decoded.height);
     } catch {
-      if (this.path !== path) return;
+      if (requestId !== this.#openRequestId || this.path !== path) {
+        return;
+      }
       this.setError();
     }
   }
@@ -137,6 +195,8 @@ class ViewerStore {
 
   /** Clear the viewer back to the empty state. */
   reset(): void {
+    this.#openRequestId += 1;
+    this.#cancelPendingDecode();
     this.resetTransform();
     this.path = null;
     this.source = "";

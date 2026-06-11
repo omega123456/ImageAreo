@@ -10,6 +10,7 @@ import { viewer } from "../lib/stores/viewer.svelte";
 import { folder } from "../lib/stores/folder.svelte";
 
 beforeEach(() => {
+  vi.restoreAllMocks();
   viewer.reset();
   folder.reset();
   vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((cb) => {
@@ -63,7 +64,7 @@ describe("ImageViewer state routing", () => {
     expect(onOpen).toHaveBeenCalledOnce();
   });
 
-  it("shows the ghosted previous image after a ready image then a reload", async () => {
+  it("keeps the previous image visible after a ready image then a reload", async () => {
     viewer.load("asset://first.jpg", "first.jpg");
     render(ImageViewer);
     const img = screen.getByRole("img", { name: "first.jpg" }) as HTMLImageElement;
@@ -71,17 +72,16 @@ describe("ImageViewer state routing", () => {
     Object.defineProperty(img, "naturalHeight", { value: 100, configurable: true });
     await fireEvent.load(img);
 
-    // Begin loading a new (exotic) image with no source yet.
-    viewer.load("", "next.heic");
+    viewer.name = "next.heic";
+    viewer.status = "loading";
 
-    const ghost = await waitFor(() => {
-      const match = screen
-        .getAllByRole("img", { hidden: true })
-        .find((el) => el.classList.contains("opacity-50"));
-      if (!match) throw new Error("ghost not yet rendered");
-      return match;
+    await waitFor(() => {
+      expect(screen.getByRole("status", { name: "Loading image" })).toBeInTheDocument();
+      expect(screen.getByRole("img", { name: "first.jpg" })).toHaveAttribute(
+        "src",
+        "asset://first.jpg",
+      );
     });
-    expect(ghost).toHaveAttribute("src", "asset://first.jpg");
   });
 });
 
