@@ -178,7 +178,7 @@
 
 <svelte:window onkeydown={handleWindowKeydown} onpointermove={registerActivity} />
 
-<div class="flex h-screen w-screen min-h-0 flex-col overflow-hidden">
+<div class="flex h-screen w-screen min-h-0 flex-col overflow-hidden select-none">
   <main class="relative min-h-0 flex-1 overflow-hidden">
     <ImageViewer
       bind:this={imageViewer}

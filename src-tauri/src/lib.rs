@@ -18,6 +18,31 @@ fn frontend_ready(buffer: tauri::State<'_, LaunchPathBuffer>) -> Option<String> 
     buffer.mark_ready()
 }
 
+/// Browser-chrome lockdown (`tauri-plugin-prevent-default`).
+///
+/// Release builds disable every browser-native behavior the plugin covers — the
+/// native right-click menu plus the reload/find/print/downloads/open/view-source
+/// keyboard shortcuts, DevTools included. Debug builds keep only DevTools so the
+/// inspector still opens under `tauri dev`; the webview compiles the inspector
+/// into debug builds alone, so release has no DevTools regardless.
+///
+/// The plugin injects a bubble-phase, `preventDefault`-only listener, so the
+/// canvas's own `oncontextmenu` handler still fires and the app's custom menu
+/// keeps working. Text selection and image dragging are handled on the frontend
+/// (`select-none` / `draggable="false"`) — the plugin has no flags for those.
+#[cfg(debug_assertions)]
+fn prevent_default() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    use tauri_plugin_prevent_default::Flags;
+    tauri_plugin_prevent_default::Builder::new()
+        .with_flags(Flags::all().difference(Flags::DEV_TOOLS))
+        .build()
+}
+
+#[cfg(not(debug_assertions))]
+fn prevent_default() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    tauri_plugin_prevent_default::init()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // NOTE: the single-instance plugin is intentionally NOT registered so that
@@ -32,6 +57,7 @@ pub fn run() {
     launch_buffer.seed(startup::parse_launch_path(std::env::args()));
 
     tauri::Builder::default()
+        .plugin(prevent_default())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
