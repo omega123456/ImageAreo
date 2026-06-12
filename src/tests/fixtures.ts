@@ -16,6 +16,8 @@
  *   generate_thumbnail       { path, size }       -> Thumbnail
  *   copy_image_to_clipboard  { path }             -> { ok }
  *   reveal_in_file_manager   { path }             -> { ok }
+ *   query_file_associations  {}                   -> ExtAssociation[]
+ *   set_default_associations { exts }             -> { ok }
  */
 
 export type IpcHandler = (
@@ -117,4 +119,10 @@ export const IPC_FIXTURES: Record<string, IpcHandler> = {
   }),
   copy_image_to_clipboard: () => ({ ok: true }),
   reveal_in_file_manager: () => ({ ok: true }),
+  query_file_associations: () => [
+    { ext: "jpg", isDefault: true },
+    { ext: "png", isDefault: false },
+    { ext: "webp", isDefault: false },
+  ],
+  set_default_associations: () => ({ ok: true }),
 };

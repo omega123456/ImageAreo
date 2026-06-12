@@ -1,3 +1,4 @@
+pub mod associations_runtime;
 pub mod clipboard;
 pub mod clipboard_runtime;
 pub mod reveal;
@@ -8,6 +9,7 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use crate::folder::{self, ImageEntry, SortOrder};
 use crate::image::{self, DecodeImageError};
 use crate::thumbnail;
+pub use associations_runtime::{query_file_associations, set_default_associations};
 pub use clipboard::{prepare_clipboard_image, ClipboardImageData};
 pub use clipboard_runtime::copy_image_to_clipboard;
 pub use reveal::validate_reveal_path;

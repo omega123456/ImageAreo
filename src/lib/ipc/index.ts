@@ -1,6 +1,7 @@
 import { convertFileSrc, invoke, type InvokeArgs } from "@tauri-apps/api/core";
 
 import {
+  type ExtAssociation,
   IPC_COMMANDS,
   type CopyImageToClipboardRequest,
   type DecodeImageRequest,
@@ -10,6 +11,7 @@ import {
   type OkResponse,
   type RevealInFileManagerRequest,
   type ScanFolderRequest,
+  type SetDefaultAssociationsRequest,
   type Thumbnail,
 } from "./commands";
 
@@ -27,6 +29,19 @@ function invokeCommand<TResponse>(
  */
 export function frontendReady(): Promise<string | null> {
   return invokeCommand<string | null>(IPC_COMMANDS.frontendReady, {});
+}
+
+export function queryFileAssociations(): Promise<ExtAssociation[]> {
+  return invokeCommand<ExtAssociation[]>(IPC_COMMANDS.queryFileAssociations, {});
+}
+
+export function setDefaultAssociations(
+  request: SetDefaultAssociationsRequest,
+): Promise<OkResponse> {
+  return invokeCommand<OkResponse>(
+    IPC_COMMANDS.setDefaultAssociations,
+    request as unknown as InvokeArgs,
+  );
 }
 
 export function scanFolder(request: ScanFolderRequest): Promise<ImageEntry[]> {

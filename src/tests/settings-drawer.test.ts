@@ -14,16 +14,16 @@ async function initSettings() {
 
 describe("SettingsDrawer", () => {
   beforeEach(async () => {
+    ui.closeSettings();
     folder.reset();
     settings.resetForTests();
-    ui.closeSettings();
     await initSettings();
   });
 
   afterEach(() => {
+    ui.closeSettings();
     folder.reset();
     settings.resetForTests();
-    ui.closeSettings();
   });
 
   it("renders nothing while closed and the dialog once opened", async () => {
@@ -55,7 +55,6 @@ describe("SettingsDrawer", () => {
   it("shows the app version in the About section", async () => {
     ui.openSettings();
     render(SettingsDrawer, { props: { version: "2.3.4" } });
-    expect(screen.getByText(/ImageAreo/)).toBeInTheDocument();
     expect(screen.getByText(/v2\.3\.4/)).toBeInTheDocument();
   });
 
@@ -96,12 +95,18 @@ describe("SettingsDrawer", () => {
     ui.openSettings();
     render(SettingsDrawer, { props: { version: "1.0.0" } });
 
+    // Wait for the async association load to render its checkboxes so the
+    // focusable set is stable before we capture first/last.
+    await screen.findByRole("checkbox", {
+      name: "Associate .jpg with ImageAreo",
+    });
+
     const dialog = screen.getByRole("dialog");
     const items = Array.from(
       dialog.querySelectorAll<HTMLElement>(
         'button, input, select, [tabindex]:not([tabindex="-1"])',
       ),
-    );
+    ).filter((el) => !el.hasAttribute("disabled"));
     const first = items[0];
     const last = items[items.length - 1];
 
@@ -147,6 +152,61 @@ describe("SettingsDrawer", () => {
     expect(ipc.calls("plugin:store|set")).toContainEqual(
       expect.objectContaining({ key: "galleryDensity", value: "small" }),
     );
+  });
+
+  it("renders the file type checklist from the live association query", async () => {
+    ipc.override("query_file_associations", () => [
+      { ext: "jpg", isDefault: true },
+      { ext: "png", isDefault: false },
+      { ext: "webp", isDefault: false },
+    ]);
+    ui.openSettings();
+    render(SettingsDrawer, { props: { version: "1.0.0" } });
+
+    expect(
+      await screen.findByRole("checkbox", {
+        name: "Associate .jpg with ImageAreo",
+      }),
+    ).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", {
+        name: "Associate .png with ImageAreo",
+      }),
+    ).not.toBeChecked();
+  });
+
+  it("applies the selected file types through IPC", async () => {
+    let queryCount = 0;
+    ipc.override("query_file_associations", () => {
+      queryCount += 1;
+
+      if (queryCount === 1) {
+        return [
+          { ext: "jpg", isDefault: true },
+          { ext: "png", isDefault: false },
+        ];
+      }
+
+      return [
+        { ext: "jpg", isDefault: true },
+        { ext: "png", isDefault: true },
+      ];
+    });
+
+    ui.openSettings();
+    render(SettingsDrawer, { props: { version: "1.0.0" } });
+
+    const png = await screen.findByRole("checkbox", {
+      name: "Associate .png with ImageAreo",
+    });
+    await fireEvent.click(png);
+    await fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+
+    await waitFor(() => {
+      expect(ipc.calls("set_default_associations")).toEqual([
+        { exts: ["jpg", "png"] },
+      ]);
+    });
   });
 
   it("changes sort and persists it", async () => {

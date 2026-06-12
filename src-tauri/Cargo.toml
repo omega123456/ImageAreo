@@ -54,6 +54,13 @@ tauri-plugin-updater = { version = "~2.10", features = ["rustls-tls"] }
 tauri-plugin-process = "2"
 jpeg-decoder = "0.3.2"
 
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "0.10"
+core-foundation-sys = "0.8"
+
 [dev-dependencies]
 # Integration-test harness (P3). `tempfile` builds isolated fixture folders;
 # `tokio` test-util drives async command bodies; the `tauri` test feature lets

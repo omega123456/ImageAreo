@@ -1,5 +1,7 @@
 export const IPC_COMMANDS = {
   frontendReady: "frontend_ready",
+  queryFileAssociations: "query_file_associations",
+  setDefaultAssociations: "set_default_associations",
   scanFolder: "scan_folder",
   decodeImage: "decode_image",
   generateThumbnail: "generate_thumbnail",
@@ -57,6 +59,11 @@ export interface OkResponse {
   ok: true;
 }
 
+export interface ExtAssociation {
+  ext: string;
+  isDefault: boolean;
+}
+
 export interface ScanFolderRequest {
   path: string;
   sortOrder: SortOrder;
@@ -77,4 +84,8 @@ export interface CopyImageToClipboardRequest {
 
 export interface RevealInFileManagerRequest {
   path: string;
+}
+
+export interface SetDefaultAssociationsRequest {
+  exts: string[];
 }

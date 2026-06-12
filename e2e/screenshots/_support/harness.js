@@ -40,6 +40,15 @@ export const FOCUSED_PATH = FIXTURE_ENTRIES[FOCUSED_INDEX].path;
 export const SLOW_PATH = "/fixtures/slow.png";
 /** A path the asset route aborts, driving the viewer to `error`. */
 export const BROKEN_PATH = "/fixtures/broken.png";
+/** Stable file-association payload for drawer-only screenshot coverage. */
+export const DEFAULT_FILE_ASSOCIATIONS = [
+  { ext: "jpg", isDefault: true },
+  { ext: "png", isDefault: true },
+  { ext: "gif", isDefault: false },
+  { ext: "webp", isDefault: false },
+  { ext: "heic", isDefault: false },
+  { ext: "jxl", isDefault: false },
+];
 
 /**
  * Install the in-page Tauri mock. `config` is serialized to the browser and
@@ -62,6 +71,8 @@ function installTauriMock(page, config) {
           return Promise.resolve({ path: args.path });
         case "decode_image":
           return Promise.reject(new Error("decode_image not mocked"));
+        case "query_file_associations":
+          return Promise.resolve(cfg.fileAssociations ?? undefined);
         case "plugin:event|listen":
           return Promise.resolve(++eventId);
         default:
@@ -129,13 +140,19 @@ function serveFixtures(page) {
  * @param {"dark"|"light"} opts.theme
  * @param {string|null} [opts.frontendReadyPath] path auto-opened on launch
  * @param {Array} [opts.entries] folder listing `scan_folder` returns
+ * @param {Array} [opts.fileAssociations] file associations returned to the drawer
  */
 export async function bootApp(page, opts) {
-  const { theme, frontendReadyPath = null, entries = FIXTURE_ENTRIES } = opts;
+  const {
+    theme,
+    frontendReadyPath = null,
+    entries = FIXTURE_ENTRIES,
+    fileAssociations,
+  } = opts;
 
   await page.emulateMedia({ colorScheme: theme });
   await serveFixtures(page);
-  await installTauriMock(page, { frontendReadyPath, entries });
+  await installTauriMock(page, { frontendReadyPath, entries, fileAssociations });
 
   // Wait for DOM ready, not full `load`: the loading-state scenario holds an
   // asset request open forever, which would otherwise stall the `load` event.

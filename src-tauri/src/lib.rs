@@ -1,3 +1,4 @@
+pub mod associations;
 pub mod commands;
 pub mod folder;
 pub mod image;
@@ -83,6 +84,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             frontend_ready,
+            commands::associations_runtime::query_file_associations,
+            commands::associations_runtime::set_default_associations,
             commands::scan_folder,
             commands::decode_image,
             commands::generate_thumbnail,

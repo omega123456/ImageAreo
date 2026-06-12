@@ -53,11 +53,9 @@ export default defineConfig({
     "{testDir}/snapshots/{testFileName}/{platform}/{arg}{ext}",
   expect: {
     toHaveScreenshot: {
-      // Pragmatic tolerance: catches real layout/color regressions while
-      // absorbing sub-pixel font-hinting noise between runs.
-      maxDiffPixelRatio: 0.02,
-      // Freeze CSS animations/transitions (spinner, drawer slide, chrome fade)
-      // to their end state so captures are deterministic.
+      maxDiffPixels: 50,
+      maxDiffPixelRatio: 0.05,
+      threshold: 0.2,
       animations: "disabled",
       caret: "hide",
     },

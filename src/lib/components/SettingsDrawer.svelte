@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { getVersion } from "@tauri-apps/api/app";
   import { fly } from "svelte/transition";
 
@@ -9,6 +10,7 @@
     type ThemeSetting,
   } from "../stores/settings.svelte";
   import { folder } from "../stores/folder.svelte";
+  import { associations } from "../stores/associations.svelte";
   import { ui } from "../stores/ui.svelte";
   import { updater } from "../stores/updater.svelte";
   import type { SortOrder } from "../ipc/commands";
@@ -105,6 +107,17 @@
     first?.focus();
   });
 
+  $effect(() => {
+    if (!ui.settingsOpen) {
+      return;
+    }
+
+    // Trigger a reload whenever the drawer opens. untrack keeps the effect
+    // subscribed only to settingsOpen — load() mutates its own isLoading state,
+    // which would otherwise re-trigger this effect in an infinite loop.
+    untrack(() => void associations.load(true));
+  });
+
   function onKeydown(event: KeyboardEvent): void {
     if (event.key === "Escape") {
       event.preventDefault();
@@ -145,6 +158,15 @@
     const value = (event.currentTarget as HTMLSelectElement).value as SortOrder;
     await settings.setSortOrder(value);
     await folder.reloadForSortOrder(value);
+  }
+
+  function onAssociationToggle(event: Event): void {
+    const input = event.currentTarget as HTMLInputElement;
+    associations.toggle(input.value);
+  }
+
+  async function onAssociationsApply(): Promise<void> {
+    await associations.apply();
   }
 </script>
 
@@ -237,6 +259,59 @@
             <option value="date">Date modified</option>
           </select>
         </label>
+      </section>
+
+      <section class="flex flex-col gap-3">
+        <h3 class="text-xs font-semibold tracking-wider text-surface-500 uppercase">
+          File Types
+        </h3>
+        <p class="text-sm text-surface-500">
+          Apply asks the OS to confirm ImageAreo as the default viewer for the
+          selected formats.
+        </p>
+
+        {#if associations.error}
+          <p class="text-sm text-primary-600-400">{associations.error}</p>
+        {/if}
+
+        {#if associations.isLoading}
+          <p class="text-sm text-surface-500">Loading file associations...</p>
+        {:else if associations.hasEntries}
+          <div
+            class="grid max-h-64 grid-cols-2 gap-2 overflow-y-auto rounded-lg border border-surface-200-800 p-3 scrollbar-thin scrollbar-thumb-surface-400-600"
+          >
+            {#each associations.entries as entry (entry.ext)}
+              <label class="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  class="checkbox size-4 shrink-0"
+                  value={entry.ext}
+                  checked={associations.isSelected(entry.ext)}
+                  onchange={onAssociationToggle}
+                  aria-label={`Associate .${entry.ext} with ImageAreo`}
+                />
+                <span>.{entry.ext}</span>
+              </label>
+            {/each}
+          </div>
+        {:else}
+          <p class="text-sm text-surface-500">
+            File associations are unavailable on this platform.
+          </p>
+        {/if}
+
+        <button
+          type="button"
+          class="btn btn-sm self-start preset-filled-primary-500"
+          disabled={!associations.canApply}
+          onclick={onAssociationsApply}
+        >
+          {#if associations.isApplying}
+            Applying...
+          {:else}
+            Apply
+          {/if}
+        </button>
       </section>
 
       <section class="flex flex-col gap-2">
