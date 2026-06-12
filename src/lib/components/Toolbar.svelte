@@ -1,5 +1,6 @@
 <script lang="ts">
   import { folder } from "../stores/folder.svelte";
+  import { updater } from "../stores/updater.svelte";
   import { icons, ICON_SIZE, iconWeightFor } from "../icons";
 
   interface Props {
@@ -172,15 +173,24 @@
     />
   </button>
 
-  <button
-    type="button"
-    class="btn-icon btn-icon-sm preset-tonal-surface"
-    aria-label="Settings"
-    title="Settings"
-    onclick={onSettings}
-  >
-    <SettingsIcon size={ICON_SIZE} aria-hidden="true" />
-  </button>
+  <div class="relative">
+    <button
+      type="button"
+      class="btn-icon btn-icon-sm preset-tonal-surface"
+      aria-label="Settings"
+      title="Settings"
+      onclick={onSettings}
+    >
+      <SettingsIcon size={ICON_SIZE} aria-hidden="true" />
+    </button>
+    {#if updater.showBadge}
+      <span
+        class="pointer-events-none absolute top-0.5 right-0.5 size-2 rounded-full bg-primary-500"
+        data-testid="update-badge"
+        aria-label="Update available"
+      ></span>
+    {/if}
+  </div>
 
   {#if hasFolder}
     <span

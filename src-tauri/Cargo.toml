@@ -50,6 +50,8 @@ rawler = "0.7.2"
 serde = { version = "~1.0", features = ["derive"] }
 serde_json = "~1.0"
 tauri-plugin-store = "~2.4"
+tauri-plugin-updater = { version = "~2.10", features = ["rustls-tls"] }
+tauri-plugin-process = "2"
 jpeg-decoder = "0.3.2"
 
 [dev-dependencies]
@@ -57,6 +59,6 @@ jpeg-decoder = "0.3.2"
 # `tokio` test-util drives async command bodies; the `tauri` test feature lets
 # integration tests construct a mock app context.
 filetime = "~0.2"
-tempfile = "~3.10"
+tempfile = "~3.20"
 tokio = { version = "~1", features = ["macros", "rt", "test-util"] }
 tauri = { version = "~2.11", features = ["test"] }

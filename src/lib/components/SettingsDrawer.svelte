@@ -10,6 +10,7 @@
   } from "../stores/settings.svelte";
   import { folder } from "../stores/folder.svelte";
   import { ui } from "../stores/ui.svelte";
+  import { updater } from "../stores/updater.svelte";
   import type { SortOrder } from "../ipc/commands";
 
   interface Props {
@@ -18,14 +19,29 @@
      * is resolved from Tauri on mount; injectable so tests stay headless.
      */
     version?: string;
-    /** Whether an update is available — Phase 17 supplies this; slot only here. */
+    /**
+     * Whether an update is available. Defaults to the updater store so the
+     * prop-less mount in App.svelte reflects live state; tests override it.
+     */
     updateAvailable?: boolean;
-    /** Target version for the available update (Phase 17). */
+    /** Target version for the available update. Defaults to the updater store. */
     updateVersion?: string;
   }
 
-  let { version = "", updateAvailable = false, updateVersion = "" }: Props =
-    $props();
+  let {
+    version = "",
+    updateAvailable = undefined,
+    updateVersion = undefined,
+  }: Props = $props();
+
+  const showUpdate = $derived(updateAvailable ?? updater.showBadge);
+  const updateVersionLabel = $derived(
+    updateVersion ?? updater.updateVersion ?? "",
+  );
+
+  function installUpdate(): void {
+    void updater.installUpdate();
+  }
 
   const CloseIcon = icons.close;
   const SettingsIcon = icons.settings;
@@ -230,15 +246,25 @@
         <p class="text-sm">
           ImageAreo{#if resolvedVersion}&nbsp;v{resolvedVersion}{/if}
         </p>
-        {#if updateAvailable}
-          <!-- Phase 17 fills the update-available behaviour; this is the slot. -->
-          <div class="flex items-center gap-2 text-sm text-primary-600-400">
-            <UpdateIcon
-              size={ICON_SIZE}
-              weight={iconWeightFor("updateAvailable", true)}
-              aria-hidden="true"
-            />
-            <span>Update available{#if updateVersion}&nbsp;v{updateVersion}{/if}</span>
+        {#if showUpdate}
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2 text-sm text-primary-600-400">
+              <UpdateIcon
+                size={ICON_SIZE}
+                weight={iconWeightFor("updateAvailable", true)}
+                aria-hidden="true"
+              />
+              <span
+                >Update available{#if updateVersionLabel}&nbsp;v{updateVersionLabel}{/if}</span
+              >
+            </div>
+            <button
+              type="button"
+              class="btn btn-sm preset-filled-primary-500"
+              onclick={installUpdate}
+            >
+              Update
+            </button>
           </div>
         {/if}
       </section>

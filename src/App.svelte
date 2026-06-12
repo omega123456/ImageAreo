@@ -6,7 +6,9 @@
   import ImageViewer from "./lib/components/ImageViewer.svelte";
   import ZoomHud from "./lib/components/ZoomHud.svelte";
   import SettingsDrawer from "./lib/components/SettingsDrawer.svelte";
+  import UpdateToast from "./lib/components/UpdateToast.svelte";
   import Filmstrip from "./lib/components/Filmstrip.svelte";
+  import { updater } from "./lib/stores/updater.svelte";
   import { galleryUi } from "./lib/stores/gallery-ui.svelte";
   import { chrome } from "./lib/stores/chrome.svelte";
   import { ui } from "./lib/stores/ui.svelte";
@@ -151,6 +153,7 @@
   onMount(() => {
     let unlisten: UnlistenFn | undefined;
     chrome.start();
+    const cancelUpdateCheck = updater.scheduleLaunchCheck();
     void ui.initializeFullscreen();
     void registerEntryPoints({
       openDialog: handleOpen,
@@ -165,6 +168,7 @@
     });
     return () => {
       chrome.stop();
+      cancelUpdateCheck();
       unlisten?.();
     };
   });
@@ -236,3 +240,4 @@
 </div>
 
 <SettingsDrawer />
+<UpdateToast />

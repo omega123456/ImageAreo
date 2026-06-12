@@ -32,6 +32,17 @@
       }
     }
   },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/jozsefkovacs89/imageareo/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlFMzA1Q0Y1NzA4QkM5M0IKUldRN3lZdHc5Vnd3bnN4dmRGZUVOc0J4UWNHUnNyRkFjR01rZTFjRElNYzE4TC9EcmF6c2YzNGMK",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",

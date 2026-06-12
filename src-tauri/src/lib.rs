@@ -64,6 +64,12 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
+        // Auto-updater: the client checks the GitHub-hosted `latest.json`
+        // endpoint configured in tauri.conf.json against the embedded public
+        // key. Install/relaunch is an OS process side effect (coverage-excluded).
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        // Relaunch into the freshly installed update (used by the updater flow).
+        .plugin(tauri_plugin_process::init())
         .manage(launch_buffer)
         .setup(|app| {
             // Build and attach the native application menu, routing item clicks
