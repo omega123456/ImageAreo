@@ -172,14 +172,14 @@
         <h3 class="text-xs font-semibold tracking-wider text-surface-500 uppercase">
           Appearance
         </h3>
-        <fieldset class="flex flex-col gap-1">
-          <legend class="text-sm">Theme</legend>
+        <div class="flex flex-col gap-1" role="radiogroup" aria-labelledby="theme-label">
+          <span id="theme-label" class="text-sm">Theme</span>
           {#each themeOptions as option (option.value)}
-            <label class="flex items-center gap-2 text-sm">
+            <label class="flex h-7 items-center gap-2 text-sm">
               <input
                 type="radio"
                 name="theme"
-                class="radio"
+                class="radio size-5 shrink-0 transition-colors"
                 value={option.value}
                 checked={settings.theme === option.value}
                 onchange={onThemeChange}
@@ -187,7 +187,7 @@
               {option.label}
             </label>
           {/each}
-        </fieldset>
+        </div>
       </section>
 
       <section class="flex flex-col gap-3">

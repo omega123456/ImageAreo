@@ -67,6 +67,7 @@ export class ZoomPanController {
   private cancelFrame: CancelRaf;
 
   private animationHandle: number | null = null;
+  private resizeObserver: ResizeObserver | null = null;
 
   // Drag tracking.
   private dragging = false;
@@ -109,6 +110,15 @@ export class ZoomPanController {
       () => this.container.removeEventListener("pointerup", pointerUp),
       () => this.container.removeEventListener("pointercancel", pointerUp),
     ];
+
+    if (typeof ResizeObserver !== "undefined") {
+      this.resizeObserver = new ResizeObserver(() => this.handleResize());
+      this.resizeObserver.observe(this.container);
+      this.detachers.push(() => {
+        this.resizeObserver?.disconnect();
+        this.resizeObserver = null;
+      });
+    }
   }
 
   /** Detach all listeners and stop any running animation. */
@@ -116,6 +126,23 @@ export class ZoomPanController {
     this.stopAnimation();
     for (const off of this.detachers) off();
     this.detachers = [];
+  }
+
+  /**
+   * Keep the view consistent when the container size changes (window resize,
+   * fullscreen toggle, chrome show/hide). In fit mode the image is re-fitted to
+   * the new bounds so it grows/shrinks with the window; otherwise the pan is
+   * re-clamped so a smaller container cannot leave the image stranded off-edge.
+   */
+  handleResize(): void {
+    if (this.viewer.status !== "ready") return;
+    if (this.viewer.fitMode === "fit") {
+      this.stopAnimation();
+      this.viewer.zoom = this.clampZoom(this.fitZoom());
+      this.viewer.pan = { x: 0, y: 0 };
+      return;
+    }
+    this.viewer.pan = this.clampPan(this.viewer.pan);
   }
 
   // ---- Geometry helpers -------------------------------------------------

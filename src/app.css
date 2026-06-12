@@ -30,7 +30,7 @@
 /*
   Canvas-surround theme tokens (Styling Rule 3).
   A single dual-tone named token resolves to a dark achromatic neutral in dark
-  mode and a medium-light neutral (never pure white) in light mode. The
+  mode and pure white in light mode. The
   `light-dark()` function keys off the CSS `color-scheme` property — declared as
   `color-scheme: light dark` on `:root` above — so the token follows the OS
   appearance (not Tailwind's `dark` variant directly).
@@ -44,7 +44,7 @@
   stylesheet imported above bundles the font (no network fetch / offline-safe).
 */
 @theme {
-  --color-canvas-surround: light-dark(oklch(0.86 0.005 250), oklch(0.18 0.01 250));
+  --color-canvas-surround: light-dark(oklch(1 0 0), oklch(0.18 0.01 250));
 
   /*
     Inter variable as the default UI font family. Skeleton/Tailwind map this
@@ -87,9 +87,10 @@
     oklch(0.75 0.01 250 / 0.18)
   );
 
-  /* Settings drawer panel — opaque neutral. */
+  /* Settings drawer panel — opaque neutral; pure white in light to match the
+     app canvas background (`canvas-surround`). */
   --color-chrome-surface: light-dark(
-    oklch(0.98 0.004 250),
+    oklch(1 0 0),
     oklch(0.20 0.01 250)
   );
 }

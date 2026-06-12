@@ -397,4 +397,84 @@ describe("ZoomPanController", () => {
     );
     expect(viewer.zoom).toBe(1);
   });
+
+  describe("handleResize", () => {
+    function setContainerSize(el: HTMLElement, width: number, height: number): void {
+      el.getBoundingClientRect = () =>
+        ({
+          left: 0,
+          top: 0,
+          right: width,
+          bottom: height,
+          width,
+          height,
+          x: 0,
+          y: 0,
+          toJSON() {},
+        }) as DOMRect;
+    }
+
+    it("re-fits the image to the new container size while in fit mode", () => {
+      const viewer = makeViewer({ fitMode: "fit", zoom: 0.5, pan: { x: 10, y: 10 } });
+      const c = new ZoomPanController(container, viewer);
+      // Grow the container; fit zoom = min(800/800, 600/600) = 1.
+      setContainerSize(container, 800, 600);
+      c.handleResize();
+      expect(viewer.zoom).toBeCloseTo(1);
+      expect(viewer.pan).toEqual({ x: 0, y: 0 });
+      c.destroy();
+    });
+
+    it("re-clamps pan but keeps zoom when not in fit mode", () => {
+      const viewer = makeViewer({
+        fitMode: "free",
+        zoom: 2,
+        pan: { x: 600, y: 450 },
+      });
+      const c = new ZoomPanController(container, viewer);
+      // Shrink the container; scaledW = 1600, new container 200 =>
+      // max offset (1600-200)/2 = 700 (x stays), height side re-clamps.
+      setContainerSize(container, 200, 150);
+      c.handleResize();
+      expect(viewer.zoom).toBe(2);
+      // scaledH = 1200, container 150 => max (1200-150)/2 = 525; 450 <= 525.
+      expect(viewer.pan.x).toBeLessThanOrEqual(700);
+      expect(viewer.pan.y).toBeLessThanOrEqual(525);
+      c.destroy();
+    });
+
+    it("does nothing when the image is not ready", () => {
+      const viewer = makeViewer({ status: "loading", zoom: 0.5 });
+      const c = new ZoomPanController(container, viewer);
+      setContainerSize(container, 800, 600);
+      c.handleResize();
+      expect(viewer.zoom).toBe(0.5);
+      c.destroy();
+    });
+
+    it("re-fits when the observed container resizes", () => {
+      const viewer = makeViewer({ fitMode: "fit", zoom: 0.5 });
+      const observed: Array<() => void> = [];
+      const RealResizeObserver = globalThis.ResizeObserver;
+      globalThis.ResizeObserver = class {
+        constructor(private cb: () => void) {}
+        observe(): void {
+          observed.push(this.cb);
+        }
+        unobserve(): void {}
+        disconnect(): void {}
+      } as unknown as typeof globalThis.ResizeObserver;
+
+      try {
+        const c = new ZoomPanController(container, viewer);
+        setContainerSize(container, 800, 600);
+        // Simulate the observer firing on a window resize.
+        for (const cb of observed) cb();
+        expect(viewer.zoom).toBeCloseTo(1);
+        c.destroy();
+      } finally {
+        globalThis.ResizeObserver = RealResizeObserver;
+      }
+    });
+  });
 });

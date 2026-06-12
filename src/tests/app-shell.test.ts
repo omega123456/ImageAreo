@@ -14,10 +14,17 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
   open: openDialog,
 }));
 
-vi.mock("../lib/utils/native-window", () => ({
-  readFullscreen,
-  writeFullscreen,
-}));
+vi.mock("../lib/utils/native-window", async () => {
+  const actual = await vi.importActual<
+    typeof import("../lib/utils/native-window")
+  >("../lib/utils/native-window");
+  return {
+    ...actual,
+    readFullscreen,
+    writeFullscreen,
+    writeTitle: vi.fn(async () => {}),
+  };
+});
 
 vi.mock("../lib/utils/open-entry", async () => {
   const actual = await vi.importActual<typeof import("../lib/utils/open-entry")>(

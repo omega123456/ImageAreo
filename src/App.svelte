@@ -20,6 +20,7 @@
     registerEntryPoints,
   } from "./lib/utils/open-entry";
   import { createKeyHandler } from "./lib/utils/keybindings";
+  import { windowTitle, writeTitle } from "./lib/utils/native-window";
   import type { ZoomPanController } from "./lib/utils/zoom-pan-controller";
 
   let controller = $state<ZoomPanController | null>(null);
@@ -103,6 +104,11 @@
 
   $effect(() => {
     chrome.setFullscreen(ui.fullscreen);
+  });
+
+  /** Reflect the current image's name and path in the OS window title bar. */
+  $effect(() => {
+    void writeTitle(windowTitle(viewer.path, viewer.name));
   });
 
   const onKeydown = createKeyHandler(
