@@ -35,9 +35,9 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/jozsefkovacs89/imageareo/releases/latest/download/latest.json"
+        "https://github.com/omega123456/ImageAreo/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlFMzA1Q0Y1NzA4QkM5M0IKUldRN3lZdHc5Vnd3bnN4dmRGZUVOc0J4UWNHUnNyRkFjR01rZTFjRElNYzE4TC9EcmF6c2YzNGMK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDNERjQwREY2MDA1Qzk1QkIKUldTN2xWd0E5ZzMwUFR2Ujd1YmdwaCtWRUxKWjBJMDczV3dHUW1Gb0c1OWJ1MXAvN1hTQUNWNHIK",
       "windows": {
         "installMode": "passive"
       }
@@ -46,6 +46,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "fileAssociations": [
       {
         "ext": [

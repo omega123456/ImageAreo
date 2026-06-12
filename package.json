@@ -18,7 +18,8 @@
     "test:rust": "cargo imageareo-test-integration",
     "test:rust:coverage": "node scripts/run-rust-coverage.mjs",
     "test:e2e": "node scripts/ensure-playwright-port.mjs && PW_DISABLE_TS_ESM=1 playwright test",
-    "test:all": "pnpm test:coverage && pnpm test:rust:coverage && pnpm test:e2e"
+    "test:all": "pnpm test:coverage && pnpm test:rust:coverage && pnpm test:e2e",
+    "release:tauri-version": "node scripts/bump-tauri-version.mjs"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.8",

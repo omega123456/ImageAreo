@@ -93,4 +93,35 @@ Install dependencies first with `pnpm install`.
 
 ## Release Process
 
-_(filled in by P18)_ — GitHub Actions builds macOS (unsigned for v1) + Windows artifacts on tagged releases, signs update artifacts with the updater key, and publishes `latest.json` for the auto-updater.
+Releases are built and published by `.github/workflows/release.yml` (uses the official `tauri-apps/tauri-action`).
+
+**How to cut a release:**
+
+1. Bump the version in `package.json` and `src-tauri/tauri.conf.json` (keep them in sync) and commit.
+2. Tag the commit with a SemVer `v` tag and push it:
+   ```
+   git tag v1.0.0
+   git push origin v1.0.0
+   ```
+3. The push of a `v*.*.*` tag triggers the workflow.
+
+**What the workflow produces:**
+
+- A matrix build on `macos-latest` (both `aarch64-apple-darwin` and `x86_64-apple-darwin`) and `windows-latest` (`x86_64-pc-windows-msvc`).
+- macOS `.dmg`/`.app.tar.gz` bundles and a Windows NSIS installer.
+- Signed updater artifacts plus their `.sig` signature files (Tauri signs automatically because `TAURI_SIGNING_PRIVATE_KEY` is set in CI).
+- A `latest.json` in the Tauri v2 updater format, listing each platform with its `url` + `signature`.
+- A GitHub Release for the tag with all installers, `.sig` files, and `latest.json` attached as assets.
+
+**`latest.json` hosting / updater endpoint:** the file is published as a Release asset and resolved at
+`https://github.com/jozsefkovacs89/imageareo/releases/latest/download/latest.json`
+(the `endpoints` value in `src-tauri/tauri.conf.json`). The embedded updater `pubkey` must match the private key used to sign the artifacts.
+
+**Required GitHub repository secrets** (Settings → Secrets and variables → Actions):
+
+- `TAURI_SIGNING_PRIVATE_KEY` — the updater private key (rsign secret key) generated with `pnpm tauri signer generate`.
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — the password protecting that key.
+
+The private key is **never** committed; only the matching public key lives in `tauri.conf.json` under `plugins.updater.pubkey`.
+
+**macOS is unsigned for v1** — there is no codesign/notarization step (users right-click → Open on first launch). The macOS matrix leg is structured so Apple signing/notarization inputs (`APPLE_CERTIFICATE`, `APPLE_SIGNING_IDENTITY`, etc.) can be added later without rewriting the workflow.
