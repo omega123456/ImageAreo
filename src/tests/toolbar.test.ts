@@ -27,11 +27,13 @@ describe("Toolbar", () => {
     }
   });
 
-  it("floats with the translucent toolbar surface and blur", () => {
+  it("floats with the translucent toolbar surface and liquid-glass blur", () => {
     const { container } = render(Toolbar);
     const header = container.querySelector("header");
     expect(header).toHaveClass("bg-toolbar-surface");
-    expect(header).toHaveClass("backdrop-blur-sm");
+    expect(header).toHaveClass("backdrop-blur-xl");
+    expect(header).toHaveClass("backdrop-saturate-150");
+    expect(header).toHaveClass("ring-glass-highlight");
   });
 
   it("wires each button to its callback", async () => {

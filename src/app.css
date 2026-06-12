@@ -63,10 +63,18 @@
     reserved for selection/CTA.
   */
 
-  /* Floating toolbar — translucent (alpha baked in), sits over the image. */
+  /* Floating toolbar — translucent (alpha baked in), sits over the image.
+     Tuned lighter/more transparent to read as liquid glass under heavy blur. */
   --color-toolbar-surface: light-dark(
-    oklch(0.97 0.005 250 / 0.72),
-    oklch(0.22 0.01 250 / 0.72)
+    oklch(0.98 0.005 250 / 0.25),
+    oklch(0.26 0.01 250 / 0.22)
+  );
+
+  /* Liquid-glass rim highlight — bright translucent inner edge that catches
+     light along the top of the floating chrome (macOS-style specular rim). */
+  --color-glass-highlight: light-dark(
+    oklch(1 0 0 / 0.7),
+    oklch(1 0 0 / 0.14)
   );
 
   /* Zoom HUD pill — translucent (alpha baked in). */

@@ -22,3 +22,6 @@ coverage
 /playwright-report
 .playwright-dev-port
 .playwright-mcp
+
+# Tauri dev runner (dynamic dev-server port → devUrl override)
+src-tauri/tauri.dev.merge.json

@@ -13,10 +13,11 @@ export default defineConfig({
   //
   // 1. prevent Vite from obscuring rust errors
   clearScreen: false,
-  // 2. tauri expects a fixed port, fail if that port is not available
+  // 2. prefer 1420 but fall back when busy; the tauri:dev runner detects the
+  //    actual bound port from Vite's banner and points Tauri at it.
   server: {
     port: 1420,
-    strictPort: true,
+    strictPort: false,
     host: host || false,
     hmr: host
       ? {
