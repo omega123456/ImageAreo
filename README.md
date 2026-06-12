@@ -25,7 +25,6 @@ Get the latest release for your platform from **[GitHub Releases](https://github
 | Platform | What to download | Notes |
 |----------|------------------|-------|
 | **macOS (Apple Silicon)** | `ImageAreo-*-macos-aarch64.dmg` | M-series Macs |
-| **macOS (Intel)** | `ImageAreo-*-macos-x86_64.dmg` | Intel Macs |
 | **Windows** | `ImageAreo-*-windows-x86_64-setup.exe` | 64-bit Windows 11+ |
 
 > **System requirements:** macOS **14 (Sonoma)** or later · Windows **11** or later
@@ -79,7 +78,6 @@ macOS remembers your choice after step 5. From then on you can launch ImageAreo 
 | “App can’t be opened because Apple cannot check it for malicious software” | Repeat step 5 (right-click → Open) |
 | “ImageAreo is damaged and can’t be opened” | Repeat steps 2 and 4 (`xattr` on the DMG and the `.app`) |
 | App opens but images do not | Check that you are on macOS 14+ and try opening a common format (JPEG/PNG) first |
-| Wrong architecture | Apple Silicon Macs need the `aarch64` DMG; Intel Macs need `x86_64` |
 
 ---
 
