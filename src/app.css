@@ -4,6 +4,18 @@
 @import "@fontsource-variable/inter";
 @plugin "tailwind-scrollbar";
 
+/*
+  Drive the `dark` variant from the `.dark` class on :root (toggled by
+  settings.applyTheme), NOT the default `prefers-color-scheme` media query.
+  Skeleton's globals set `color-scheme` and the body text color through
+  `@variant dark`; our explicit theme override (Dark while the OS is Light, or
+  vice-versa) only reaches those rules if the variant follows the same class we
+  toggle. Without this, light-dark() tokens flip with the inline color-scheme
+  while Skeleton's text color stays on the OS media query — dark menu, dark
+  text, invisible labels.
+*/
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* Tell Tailwind where to scan for class usage. */
 @source "../src";
 

@@ -79,20 +79,16 @@ e2e/                      # Playwright specs
 
 Install dependencies first with `pnpm install`.
 
-**Available now (P1 scaffold):**
-
 - `pnpm dev` — run the Vite frontend dev server (port 1420)
 - `pnpm tauri:dev` (alias: `pnpm tauri dev`) — run the full desktop app in development
 - `pnpm build` — production build of the frontend (output: `dist/`)
 - `pnpm tauri:build` (alias: `pnpm tauri build`) — build the native desktop app/installers
 - `pnpm check` — type-check Svelte + TypeScript (`svelte-check`)
 - `pnpm tauri` — Tauri CLI passthrough
-
-**Added by the test-scaffolding phase (P3):**
-
 - `pnpm test:coverage` — frontend tests with the 90% gate
 - `pnpm test:rust:coverage` — Rust integration tests
 - `pnpm test:e2e` — Playwright E2E
+- `pnpm test:e2e e2e/screenshots -- --update-snapshots` — Playwright E2E and update the baseline
 - `pnpm test:all` — everything
 
 ## Release Process

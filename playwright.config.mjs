@@ -5,6 +5,15 @@ import os from "node:os";
 import { defineConfig, devices } from "@playwright/test";
 import { DEV_SERVER_HOST } from "./scripts/pick-dev-port.mjs";
 
+// The Vite dev server loads vite.config.ts through Node's module.register(),
+// which Node 26 deprecates (DEP0205). Until Vite moves to module.registerHooks()
+// we silence just that one code for the spawned webServer (inherited via env so
+// it stays cross-platform). The Playwright runner/workers are handled separately
+// by PW_DISABLE_TS_ESM in the test:e2e script.
+process.env.NODE_OPTIONS = [process.env.NODE_OPTIONS, "--disable-warning=DEP0205"]
+  .filter(Boolean)
+  .join(" ");
+
 const root = path.dirname(fileURLToPath(import.meta.url));
 const portFile = path.join(root, ".playwright-dev-port");
 
@@ -37,6 +46,22 @@ export default defineConfig({
   workers: isCI ? 1 : Math.min(2, availableCpus),
   reporter: "line",
   timeout: 15_000,
+  // Visual-regression baselines live in-repo under e2e/snapshots/, one folder
+  // per spec file. Platform is part of the path because pixel output differs
+  // across OSes (font hinting, AA), so each platform owns its own baselines.
+  snapshotPathTemplate:
+    "{testDir}/snapshots/{testFileName}/{platform}/{arg}{ext}",
+  expect: {
+    toHaveScreenshot: {
+      // Pragmatic tolerance: catches real layout/color regressions while
+      // absorbing sub-pixel font-hinting noise between runs.
+      maxDiffPixelRatio: 0.02,
+      // Freeze CSS animations/transitions (spinner, drawer slide, chrome fade)
+      // to their end state so captures are deterministic.
+      animations: "disabled",
+      caret: "hide",
+    },
+  },
   use: {
     baseURL,
     trace: "on-first-retry",
