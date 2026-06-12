@@ -10,6 +10,7 @@ import {
   type ImageEntry,
   type OkResponse,
   type RevealInFileManagerRequest,
+  type SampleImageRequest,
   type ScanFolderRequest,
   type SetDefaultAssociationsRequest,
   type Thumbnail,
@@ -54,6 +55,14 @@ export function scanFolder(request: ScanFolderRequest): Promise<ImageEntry[]> {
 export function decodeImage(request: DecodeImageRequest): Promise<DecodedImage> {
   return invokeCommand<DecodedImage>(
     IPC_COMMANDS.decodeImage,
+    request as unknown as InvokeArgs,
+  );
+}
+
+/** Small downscaled image as a same-origin data URL for backdrop sampling. */
+export function sampleImage(request: SampleImageRequest): Promise<string> {
+  return invokeCommand<string>(
+    IPC_COMMANDS.sampleImage,
     request as unknown as InvokeArgs,
   );
 }

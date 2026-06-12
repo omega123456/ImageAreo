@@ -55,6 +55,25 @@ pub fn generate_thumbnail(
     })
 }
 
+/// Decode and downscale `path` to a small JPEG (raw pixel orientation) for
+/// backdrop sampling. Unlike [`generate_thumbnail`] this does not touch the
+/// on-disk cache and returns the encoded bytes directly, so the frontend can
+/// load them as a same-origin data URL (a canvas drawn from an asset-protocol
+/// URL taints and cannot be read).
+pub fn sample_jpeg(path: &Path, logical_size: u32) -> Result<Vec<u8>, DecodeImageError> {
+    if logical_size == 0 {
+        return Err(DecodeImageError {
+            code: "decode_failed",
+            message: "sample size must be greater than zero".to_string(),
+        });
+    }
+
+    let loaded = image::load_thumbnail_source(path, logical_size.saturating_mul(2))?;
+    let (width, height) = target_dimensions(&loaded.image, logical_size);
+    let resized = resize_image(&loaded.image, width, height)?;
+    encode_jpeg(&resized)
+}
+
 fn target_dimensions(image: &DynamicImage, logical_size: u32) -> (u32, u32) {
     let max_edge = logical_size.saturating_mul(2);
     let (source_width, source_height) = image.dimensions();

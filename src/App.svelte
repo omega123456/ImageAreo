@@ -28,6 +28,14 @@
   let controller = $state<ZoomPanController | null>(null);
   let imageViewer = $state<ImageViewer | null>(null);
 
+  /** Measured filmstrip height; reserved by "fit" so fitted images stay above
+   *  the strip while zoomed images render behind its translucent glass. Only
+   *  reserved in windowed mode — in fullscreen the strip auto-hides on idle. */
+  let stripHeight = $state(0);
+  const fitBottomInset = $derived(
+    !ui.fullscreen && galleryUi.visible ? stripHeight : 0,
+  );
+
   const chromeVisibilityClass = $derived(
     chrome.chromeVisible
       ? "visible opacity-100"
@@ -195,30 +203,33 @@
       bind:controller
       onOpen={handleOpen}
       fullscreen={ui.fullscreen}
+      bottomInset={fitBottomInset}
     />
 
-    <div
-      class={`pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center px-3 ${toolbarChromeClass}`}
-      data-testid="toolbar-overlay"
-    >
-      <div class="pointer-events-auto">
-        <Toolbar
-          onOpen={handleOpen}
-          onOpenFolder={handleOpenFolder}
-          onFit={() => controller?.fitToScreen()}
-          onActualSize={() => controller?.setActualSize()}
-          onZoomIn={() => controller?.zoomIn()}
-          onZoomOut={() => controller?.zoomOut()}
-          onToggleFullscreen={() => void ui.toggleFullscreen()}
-          onRotateLeft={() => viewer.rotateLeft()}
-          onRotateRight={() => viewer.rotateRight()}
-          onSettings={() => ui.openSettings()}
-          onToggleGallery={() => galleryUi.toggle()}
-          galleryVisible={galleryUi.visible}
-          fullscreen={ui.fullscreen}
-        />
+    {#if viewer.status !== "idle"}
+      <div
+        class={`pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center px-3 ${toolbarChromeClass}`}
+        data-testid="toolbar-overlay"
+      >
+        <div class="pointer-events-auto">
+          <Toolbar
+            onOpen={handleOpen}
+            onOpenFolder={handleOpenFolder}
+            onFit={() => controller?.fitToScreen()}
+            onActualSize={() => controller?.setActualSize()}
+            onZoomIn={() => controller?.zoomIn()}
+            onZoomOut={() => controller?.zoomOut()}
+            onToggleFullscreen={() => void ui.toggleFullscreen()}
+            onRotateLeft={() => viewer.rotateLeft()}
+            onRotateRight={() => viewer.rotateRight()}
+            onSettings={() => ui.openSettings()}
+            onToggleGallery={() => galleryUi.toggle()}
+            galleryVisible={galleryUi.visible}
+            fullscreen={ui.fullscreen}
+          />
+        </div>
       </div>
-    </div>
+    {/if}
 
     <div
       class={`pointer-events-none absolute inset-0 z-20 ${chromeVisibilityClass} ${chromeTransitionClass}`}
@@ -230,13 +241,17 @@
         </div>
       </div>
     </div>
-  </main>
 
-  {#if galleryUi.visible}
-    <div class={filmstripChromeClass} data-testid="filmstrip-overlay">
-      <Filmstrip onSelect={handleGallerySelect} />
-    </div>
-  {/if}
+    {#if galleryUi.visible}
+      <div
+        class={`absolute inset-x-0 bottom-0 z-20 ${filmstripChromeClass}`}
+        data-testid="filmstrip-overlay"
+        bind:clientHeight={stripHeight}
+      >
+        <Filmstrip onSelect={handleGallerySelect} />
+      </div>
+    {/if}
+  </main>
 </div>
 
 <SettingsDrawer />

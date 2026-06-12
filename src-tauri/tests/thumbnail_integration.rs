@@ -170,6 +170,55 @@ fn generate_thumbnail_reuses_existing_cache_file() {
     assert_eq!((second.width, second.height), (64, 48));
 }
 
+#[test]
+fn sample_jpeg_downscales_to_jpeg_bytes() {
+    let dir = TempImageDir::new();
+    let path = dir.path().join("sample.jpg");
+    common::write_dynamic_fixture(&path, 1600, 1200, ImageFormat::Jpeg);
+
+    let bytes = thumbnail::sample_jpeg(&path, 48).expect("sample should succeed");
+    let decoded = image_rs::load_from_memory_with_format(&bytes, ImageFormat::Jpeg)
+        .expect("sample bytes should decode as JPEG");
+
+    // Long edge capped at logical_size * 2 (= 96), aspect preserved.
+    assert_eq!(decoded.dimensions(), (96, 72));
+}
+
+#[test]
+fn sample_jpeg_rejects_zero_size() {
+    let dir = TempImageDir::new();
+    let path = dir.path().join("sample.png");
+    common::write_dynamic_fixture(&path, 10, 10, ImageFormat::Png);
+
+    let error = thumbnail::sample_jpeg(&path, 0).expect_err("zero size should be rejected");
+    assert_eq!(error.code, "decode_failed");
+}
+
+#[tokio::test]
+async fn sample_image_command_returns_jpeg_data_url() {
+    let dir = TempImageDir::new();
+    let path = dir.path().join("sample.png");
+    common::write_dynamic_fixture(&path, 40, 20, ImageFormat::Png);
+
+    let data_url = commands::sample_image(path_string(&path), 32)
+        .await
+        .expect("command should succeed");
+
+    assert!(data_url.starts_with("data:image/jpeg;base64,"));
+}
+
+#[tokio::test]
+async fn sample_image_command_propagates_errors() {
+    let dir = TempImageDir::new();
+    let unsupported = dir.path().join("note.txt");
+    std::fs::write(&unsupported, b"not an image").expect("fixture write should succeed");
+
+    let error = commands::sample_image(path_string(&unsupported), 32)
+        .await
+        .expect_err("unsupported input should error");
+    assert_eq!(error.code, "unsupported_format");
+}
+
 fn decode_jpeg_file(path: &Path) -> image_rs::DynamicImage {
     image_rs::open(path).expect("thumbnail JPEG should decode")
 }

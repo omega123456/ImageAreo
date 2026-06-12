@@ -1,6 +1,7 @@
 <script lang="ts">
   import { folder } from "../stores/folder.svelte";
   import { updater } from "../stores/updater.svelte";
+  import { chromeTone } from "../stores/chrome-tone.svelte";
   import { icons, iconWeightFor } from "../icons";
 
   interface Props {
@@ -48,37 +49,49 @@
   const FilmstripIcon = icons.filmstrip;
   const SettingsIcon = icons.settings;
 
-  /** Floating-toolbar icons render larger than the 16px chrome default. */
-  const TOOLBAR_ICON_SIZE = 22;
+  /** Floating-toolbar icons render slightly larger than the 16px chrome default. */
+  const TOOLBAR_ICON_SIZE = 20;
 
   const hasFolder = $derived(folder.images.length > 0);
   const current = $derived(folder.currentIndex + 1);
   const total = $derived(folder.images.length);
   const FullscreenIcon = $derived(fullscreen ? FullscreenExitIcon : FullscreenEnterIcon);
+
+  // Glyph color adapts to the sampled image brightness behind the toolbar.
+  const glyphClass = $derived(
+    chromeTone.toolbarDark
+      ? "text-chrome-glyph-on-dark drop-shadow-glyph"
+      : "text-chrome-glyph-on-light",
+  );
+
+  // Selected-toggle chip fill, adapted to the same sampled tone.
+  const activeChipClass = $derived(
+    chromeTone.toolbarDark ? "bg-chrome-active-on-dark" : "bg-chrome-active-on-light",
+  );
 </script>
 
 <header
-  class="bg-toolbar-surface ring-glass-highlight flex items-center gap-1.5 rounded-2xl px-3 py-2 shadow-2xl ring-1 ring-inset backdrop-blur-xl backdrop-saturate-150"
+  class="bg-toolbar-surface ring-glass-highlight flex items-center gap-1.5 rounded-2xl px-2.5 py-1.5 shadow-xl ring-1 ring-inset backdrop-blur-xl backdrop-saturate-150"
 >
   <!-- File group -->
   <button
     type="button"
-    class="btn-icon preset-tonal-surface"
+    class="btn-icon hover:preset-tonal-surface"
     aria-label="Open image"
     title="Open image"
     onclick={onOpen}
   >
-    <OpenFileIcon size={TOOLBAR_ICON_SIZE} aria-hidden="true" />
+    <OpenFileIcon size={TOOLBAR_ICON_SIZE} aria-hidden="true" class={glyphClass} />
   </button>
 
   <button
     type="button"
-    class="btn-icon preset-tonal-surface"
+    class="btn-icon hover:preset-tonal-surface"
     aria-label="Open folder"
     title="Open folder"
     onclick={onOpenFolder}
   >
-    <OpenFolderIcon size={TOOLBAR_ICON_SIZE} aria-hidden="true" />
+    <OpenFolderIcon size={TOOLBAR_ICON_SIZE} aria-hidden="true" class={glyphClass} />
   </button>
 
   <div class="bg-separator mx-1.5 h-6 w-px" role="separator" aria-orientation="vertical"></div>
@@ -86,53 +99,53 @@
   <!-- View group -->
   <button
     type="button"
-    class="btn-icon preset-tonal-surface"
+    class="btn-icon hover:preset-tonal-surface"
     aria-label="Fit to screen"
     title="Fit to screen (F)"
     onclick={onFit}
   >
-    <FitIcon size={TOOLBAR_ICON_SIZE} aria-hidden="true" />
+    <FitIcon size={TOOLBAR_ICON_SIZE} aria-hidden="true" class={glyphClass} />
   </button>
 
   <button
     type="button"
-    class="btn-icon preset-tonal-surface"
+    class="btn-icon hover:preset-tonal-surface"
     aria-label="Actual size"
     title="Actual size (1)"
     onclick={onActualSize}
   >
-    <ActualSizeIcon size={TOOLBAR_ICON_SIZE} aria-hidden="true" />
+    <ActualSizeIcon size={TOOLBAR_ICON_SIZE} aria-hidden="true" class={glyphClass} />
   </button>
 
   <button
     type="button"
-    class="btn-icon preset-tonal-surface"
+    class="btn-icon hover:preset-tonal-surface"
     aria-label="Zoom in"
     title="Zoom in (+)"
     onclick={onZoomIn}
   >
-    <ZoomInIcon size={TOOLBAR_ICON_SIZE} aria-hidden="true" />
+    <ZoomInIcon size={TOOLBAR_ICON_SIZE} aria-hidden="true" class={glyphClass} />
   </button>
 
   <button
     type="button"
-    class="btn-icon preset-tonal-surface"
+    class="btn-icon hover:preset-tonal-surface"
     aria-label="Zoom out"
     title="Zoom out (−)"
     onclick={onZoomOut}
   >
-    <ZoomOutIcon size={TOOLBAR_ICON_SIZE} aria-hidden="true" />
+    <ZoomOutIcon size={TOOLBAR_ICON_SIZE} aria-hidden="true" class={glyphClass} />
   </button>
 
   <button
     type="button"
-    class="btn-icon preset-tonal-surface"
+    class="btn-icon hover:preset-tonal-surface {fullscreen ? activeChipClass : ''}"
     aria-label="Toggle fullscreen"
     aria-pressed={fullscreen}
     title="Toggle fullscreen (F11)"
     onclick={onToggleFullscreen}
   >
-    <FullscreenIcon size={TOOLBAR_ICON_SIZE} aria-hidden="true" />
+    <FullscreenIcon size={TOOLBAR_ICON_SIZE} aria-hidden="true" class={glyphClass} />
   </button>
 
   <div class="bg-separator mx-1.5 h-6 w-px" role="separator" aria-orientation="vertical"></div>
@@ -140,22 +153,22 @@
   <!-- Rotate group -->
   <button
     type="button"
-    class="btn-icon preset-tonal-surface"
+    class="btn-icon hover:preset-tonal-surface"
     aria-label="Rotate left"
     title="Rotate left (Ctrl+[)"
     onclick={onRotateLeft}
   >
-    <RotateLeftIcon size={TOOLBAR_ICON_SIZE} aria-hidden="true" />
+    <RotateLeftIcon size={TOOLBAR_ICON_SIZE} aria-hidden="true" class={glyphClass} />
   </button>
 
   <button
     type="button"
-    class="btn-icon preset-tonal-surface"
+    class="btn-icon hover:preset-tonal-surface"
     aria-label="Rotate right"
     title="Rotate right (Ctrl+])"
     onclick={onRotateRight}
   >
-    <RotateRightIcon size={TOOLBAR_ICON_SIZE} aria-hidden="true" />
+    <RotateRightIcon size={TOOLBAR_ICON_SIZE} aria-hidden="true" class={glyphClass} />
   </button>
 
   <div class="bg-separator mx-1.5 h-6 w-px" role="separator" aria-orientation="vertical"></div>
@@ -163,7 +176,7 @@
   <!-- Filmstrip + settings group -->
   <button
     type="button"
-    class="btn-icon preset-tonal-surface"
+    class="btn-icon hover:preset-tonal-surface {galleryVisible ? activeChipClass : ''}"
     aria-label="Toggle filmstrip"
     aria-pressed={galleryVisible}
     title="Toggle filmstrip"
@@ -173,18 +186,19 @@
       size={TOOLBAR_ICON_SIZE}
       weight={iconWeightFor("filmstrip", galleryVisible)}
       aria-hidden="true"
+      class={glyphClass}
     />
   </button>
 
   <div class="relative">
     <button
       type="button"
-      class="btn-icon preset-tonal-surface"
+      class="btn-icon hover:preset-tonal-surface"
       aria-label="Settings"
       title="Settings"
       onclick={onSettings}
     >
-      <SettingsIcon size={TOOLBAR_ICON_SIZE} aria-hidden="true" />
+      <SettingsIcon size={TOOLBAR_ICON_SIZE} aria-hidden="true" class={glyphClass} />
     </button>
     {#if updater.showBadge}
       <span
@@ -197,7 +211,7 @@
 
   {#if hasFolder}
     <span
-      class="ml-1 px-1.5 font-sans text-sm font-medium text-surface-500-500 tabular-nums"
+      class="{glyphClass} ml-1 px-1.5 font-sans text-sm font-medium tabular-nums"
       aria-label="Image position"
     >
       {current} / {total}

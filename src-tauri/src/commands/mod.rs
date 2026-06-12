@@ -54,6 +54,23 @@ pub async fn decode_image(path: String) -> Result<DecodedImage, DecodeImageError
     })
 }
 
+/// Return a small downscaled JPEG of `path` as a base64 data URL, used by the
+/// frontend to sample the image brightness behind the floating toolbar. A data
+/// URL is same-origin, so the sampling canvas is readable (asset-protocol URLs
+/// taint the canvas and cannot be sampled).
+#[tauri::command(rename_all = "camelCase")]
+pub async fn sample_image(path: String, size: u32) -> Result<String, DecodeImageError> {
+    let path = std::path::PathBuf::from(path);
+    let bytes = tauri::async_runtime::spawn_blocking(move || thumbnail::sample_jpeg(&path, size))
+        .await
+        .map_err(|err| DecodeImageError {
+            code: "decode_failed",
+            message: format!("sample task failed: {err}"),
+        })??;
+
+    Ok(format!("data:image/jpeg;base64,{}", STANDARD.encode(bytes)))
+}
+
 #[tauri::command(rename_all = "camelCase")]
 pub async fn generate_thumbnail(path: String, size: u32) -> Result<Thumbnail, DecodeImageError> {
     let path = std::path::PathBuf::from(path);

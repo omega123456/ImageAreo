@@ -4,6 +4,7 @@ export const IPC_COMMANDS = {
   setDefaultAssociations: "set_default_associations",
   scanFolder: "scan_folder",
   decodeImage: "decode_image",
+  sampleImage: "sample_image",
   generateThumbnail: "generate_thumbnail",
   copyImageToClipboard: "copy_image_to_clipboard",
   revealInFileManager: "reveal_in_file_manager",
@@ -74,6 +75,11 @@ export interface DecodeImageRequest {
 }
 
 export interface GenerateThumbnailRequest {
+  path: string;
+  size: number;
+}
+
+export interface SampleImageRequest {
   path: string;
   size: number;
 }

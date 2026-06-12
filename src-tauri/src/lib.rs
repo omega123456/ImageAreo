@@ -88,6 +88,7 @@ pub fn run() {
             commands::associations_runtime::set_default_associations,
             commands::scan_folder,
             commands::decode_image,
+            commands::sample_image,
             commands::generate_thumbnail,
             commands::clipboard_runtime::copy_image_to_clipboard,
             commands::reveal_runtime::reveal_in_file_manager

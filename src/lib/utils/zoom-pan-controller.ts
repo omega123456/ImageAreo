@@ -69,6 +69,14 @@ export class ZoomPanController {
   private animationHandle: number | null = null;
   private resizeObserver: ResizeObserver | null = null;
 
+  /**
+   * Height (px) of floating chrome overlapping the bottom of the canvas (the
+   * filmstrip). The canvas itself is full-height so zoomed/panned images render
+   * behind the translucent strip, but "fit" reserves this inset so a fitted
+   * image stays fully visible above the strip.
+   */
+  private bottomInset = 0;
+
   // Drag tracking.
   private dragging = false;
   private pointerId: number | null = null;
@@ -137,12 +145,29 @@ export class ZoomPanController {
   handleResize(): void {
     if (this.viewer.status !== "ready") return;
     if (this.viewer.fitMode === "fit") {
-      this.stopAnimation();
-      this.viewer.zoom = this.clampZoom(this.fitZoom());
-      this.viewer.pan = { x: 0, y: 0 };
+      this.refit();
       return;
     }
     this.viewer.pan = this.clampPan(this.viewer.pan);
+  }
+
+  /**
+   * Set the bottom chrome inset and, when currently fitted, re-fit so the image
+   * stays centered in the area above the strip as the strip appears/resizes.
+   */
+  setBottomInset(px: number): void {
+    if (px === this.bottomInset) return;
+    this.bottomInset = px;
+    if (this.viewer.status === "ready" && this.viewer.fitMode === "fit") {
+      this.refit();
+    }
+  }
+
+  /** Re-fit the image to the area above the bottom inset, centered in it. */
+  private refit(): void {
+    this.stopAnimation();
+    this.viewer.zoom = this.clampZoom(this.fitZoom());
+    this.viewer.pan = { x: 0, y: this.bottomInset ? -this.bottomInset / 2 : 0 };
   }
 
   // ---- Geometry helpers -------------------------------------------------
@@ -157,8 +182,9 @@ export class ZoomPanController {
     const { naturalWidth, naturalHeight } = this.viewer;
     if (naturalWidth <= 0 || naturalHeight <= 0) return 1;
     const { width, height } = this.containerSize();
-    if (width <= 0 || height <= 0) return 1;
-    return Math.min(width / naturalWidth, height / naturalHeight);
+    const fitHeight = height - this.bottomInset;
+    if (width <= 0 || fitHeight <= 0) return 1;
+    return Math.min(width / naturalWidth, fitHeight / naturalHeight);
   }
 
   private clampZoom(z: number): number {
@@ -289,9 +315,7 @@ export class ZoomPanController {
   /** Scale to fill the container preserving aspect; reset pan to center. */
   fitToScreen(): void {
     if (this.viewer.status !== "ready") return;
-    this.stopAnimation();
-    this.viewer.zoom = this.clampZoom(this.fitZoom());
-    this.viewer.pan = { x: 0, y: 0 };
+    this.refit();
     this.viewer.fitMode = "fit";
   }
 

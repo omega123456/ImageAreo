@@ -93,6 +93,7 @@ describe("App", () => {
   });
 
   it("uses the full supported extension set for File > Open", async () => {
+    viewer.status = "ready";
     render(App);
 
     await fireEvent.click(screen.getByRole("button", { name: "Open image" }));
@@ -167,6 +168,7 @@ describe("App", () => {
 
   it("hydrates fullscreen state from the native window and toggles the native mode", async () => {
     readFullscreen.mockResolvedValue(true);
+    viewer.status = "ready";
 
     render(App);
 
@@ -209,8 +211,16 @@ describe("App", () => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
+  it("hides the toolbar when no image is loaded", () => {
+    viewer.reset();
+    render(App);
+
+    expect(screen.queryByTestId("toolbar-overlay")).toBeNull();
+  });
+
   it("disables chrome fade transitions when reduced motion is enabled", () => {
     setReducedMotion(true);
+    viewer.status = "ready";
 
     render(App);
 

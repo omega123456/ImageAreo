@@ -219,7 +219,7 @@
 
 {#if images.length > 0}
   <section
-    class="group relative flex w-full items-center bg-strip-surface"
+    class="group ring-glass-highlight relative flex w-full items-center bg-strip-surface ring-1 ring-inset backdrop-blur-xl backdrop-saturate-150"
     style={`height:${stripHeight + activeGrowth * 2}px`}
     aria-label="Filmstrip"
   >

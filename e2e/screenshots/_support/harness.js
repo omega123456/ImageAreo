@@ -69,6 +69,13 @@ function installTauriMock(page, config) {
           return Promise.resolve(cfg.entries ?? []);
         case "generate_thumbnail":
           return Promise.resolve({ path: args.path });
+        case "sample_image":
+          // Backdrop-tone sampling source. In-browser this is same-origin
+          // (served by page.route), so the sampling canvas reads cleanly and
+          // the toolbar adapts to the actual fixture behind it.
+          return Promise.resolve(
+            `${location.origin}/__e2e_asset__/${basename(args.path)}`,
+          );
         case "decode_image":
           return Promise.reject(new Error("decode_image not mocked"));
         case "query_file_associations":

@@ -114,6 +114,8 @@ export const IPC_FIXTURES: Record<string, IpcHandler> = {
     height: 1,
     orientation: 1,
   }),
+  sample_image: () =>
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQAY3Y2wAAAAAElFTkSuQmCC",
   generate_thumbnail: () => ({
     path: "/tmp/imageareo-thumb.jpg",
   }),

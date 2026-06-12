@@ -66,8 +66,8 @@
   /* Floating toolbar — translucent (alpha baked in), sits over the image.
      Tuned lighter/more transparent to read as liquid glass under heavy blur. */
   --color-toolbar-surface: light-dark(
-    oklch(0.98 0.005 250 / 0.25),
-    oklch(0.26 0.01 250 / 0.22)
+    oklch(0.98 0.005 250 / 0.16),
+    oklch(0.26 0.01 250 / 0.14)
   );
 
   /* Liquid-glass rim highlight — bright translucent inner edge that catches
@@ -77,16 +77,35 @@
     oklch(1 0 0 / 0.14)
   );
 
+  /* Floating-chrome glyph colors, chosen at runtime from the sampled backdrop
+     brightness (see backdrop-tone.ts): a light glyph over dark image content, a
+     dark glyph over light content. Used by name as `text-chrome-glyph-on-dark`
+     / `text-chrome-glyph-on-light`. */
+  --color-chrome-glyph-on-dark: oklch(0.98 0.005 250);
+  --color-chrome-glyph-on-light: oklch(0.25 0.01 250);
+
+  /* Soft legibility shadow under chrome glyphs for busy backdrops. */
+  --drop-shadow-glyph: 0 1px 2px oklch(0 0 0 / 0.45);
+
+  /* Selected/active toolbar chip fill, also chosen from the sampled backdrop:
+     a light translucent chip over dark content, a dark translucent chip over
+     light content (so the active glyph keeps its contrast). Used by name as
+     `bg-chrome-active-on-dark` / `bg-chrome-active-on-light`. */
+  --color-chrome-active-on-dark: oklch(1 0 0 / 0.22);
+  --color-chrome-active-on-light: oklch(0.2 0.01 250 / 0.16);
+
   /* Zoom HUD pill — translucent (alpha baked in). */
   --color-hud-surface: light-dark(
     oklch(0.97 0.005 250 / 0.78),
     oklch(0.18 0.01 250 / 0.78)
   );
 
-  /* Filmstrip background — opaque neutral. */
+  /* Filmstrip background — translucent liquid glass (alpha baked in), matching
+     the floating toolbar. Used with `backdrop-blur-*` on the container, and as
+     the source color for the edge-fade gradients. */
   --color-strip-surface: light-dark(
-    oklch(0.92 0.005 250),
-    oklch(0.21 0.01 250)
+    oklch(0.98 0.005 250 / 0.16),
+    oklch(0.26 0.01 250 / 0.14)
   );
 
   /* Hairline dividers / edges — translucent (alpha baked in). */
