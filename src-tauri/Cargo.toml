@@ -53,6 +53,11 @@ tauri-plugin-store = "~2.4"
 tauri-plugin-updater = { version = "~2.10", features = ["rustls-tls"] }
 tauri-plugin-process = "2"
 jpeg-decoder = "0.3.2"
+# Pinned: time 0.3.48 / time-macros 0.2.28 fail to compile under rustc 1.95 with a
+# spurious E0119 (conflicting `From<HourBase>` impl) inside tauri-utils & cookie.
+# 0.3.47 is the lowest the tree allows (plist requires >= 0.3.47). Remove once a
+# fixed time release lands. Transitive-only dep, pinned here to hold the lockfile.
+time = "=0.3.47"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
