@@ -108,12 +108,13 @@ export const IPC_FIXTURES: Record<string, IpcHandler> = {
     },
   ],
   decode_image: () => ({
-    dataUrl:
-      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQAY3Y2wAAAAAElFTkSuQmCC",
+    path: "/tmp/imageareo-images/decoded.jpg",
     width: 1,
     height: 1,
     orientation: 1,
   }),
+  // No enhanced cache by default; tests opt in by overriding this command.
+  peek_decoded_image: () => null,
   sample_image: () =>
     "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQAY3Y2wAAAAAElFTkSuQmCC",
   generate_thumbnail: () => ({

@@ -119,8 +119,8 @@ fn scan_folder_errors_when_folder_cannot_be_read() {
 
 #[test]
 fn resolve_scan_root_errors_for_path_without_parent() {
-    let error = folder::resolve_scan_root(Path::new(""))
-        .expect_err("empty path has no containing folder");
+    let error =
+        folder::resolve_scan_root(Path::new("")).expect_err("empty path has no containing folder");
 
     assert!(error.contains("no containing folder"));
 }

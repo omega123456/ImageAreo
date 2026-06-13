@@ -8,12 +8,13 @@
   import SettingsDrawer from "./lib/components/SettingsDrawer.svelte";
   import UpdateToast from "./lib/components/UpdateToast.svelte";
   import Filmstrip from "./lib/components/Filmstrip.svelte";
+  import EnhanceControl from "./lib/components/EnhanceControl.svelte";
   import { updater } from "./lib/stores/updater.svelte";
   import { galleryUi } from "./lib/stores/gallery-ui.svelte";
   import { chrome } from "./lib/stores/chrome.svelte";
   import { ui } from "./lib/stores/ui.svelte";
   import { viewer } from "./lib/stores/viewer.svelte";
-  import { supportedExtensions } from "./lib/utils/format";
+  import { isRawFormat, supportedExtensions } from "./lib/utils/format";
   import {
     goNext,
     goPrev,
@@ -27,6 +28,7 @@
 
   let controller = $state<ZoomPanController | null>(null);
   let imageViewer = $state<ImageViewer | null>(null);
+  let enhanceBounds = $state<DOMRect | null>(null);
 
   /** Measured filmstrip height; reserved by "fit" so fitted images stay above
    *  the strip while zoomed images render behind its translucent glass. Only
@@ -35,6 +37,22 @@
   const fitBottomInset = $derived(
     !ui.fullscreen && galleryUi.visible ? stripHeight : 0,
   );
+
+  /**
+   * The "Enhance" control is RAW-only, shown once the capped display image is
+   * ready (`enhanceAvailable`) and never while the display image is still being
+   * prepared (`upgrading`).
+   */
+  const showEnhanceControl = $derived(
+    viewer.path !== null &&
+      isRawFormat(viewer.path) &&
+      viewer.enhanceAvailable &&
+      !viewer.upgrading,
+  );
+
+  $effect(() => {
+    if (!showEnhanceControl) enhanceBounds = null;
+  });
 
   const chromeVisibilityClass = $derived(
     chrome.chromeVisible
@@ -204,6 +222,7 @@
       onOpen={handleOpen}
       fullscreen={ui.fullscreen}
       bottomInset={fitBottomInset}
+      enhanceBounds={enhanceBounds}
     />
 
     {#if viewer.status !== "idle"}
@@ -251,6 +270,22 @@
         <Filmstrip onSelect={handleGallerySelect} />
       </div>
     {/if}
+
+    <!--
+      Top-left status zone: the interactive "Enhance" control for RAW images.
+      Lives above the chrome overlays (z-30) and in the top-left corner so it
+      clears the centered toolbar, the filmstrip, and the bottom-right update
+      toast. The wrapper is pointer-transparent; the control opts back in.
+    -->
+    <div
+      class="pointer-events-none absolute left-3 top-3 z-30 flex flex-col gap-2"
+    >
+      {#if showEnhanceControl}
+        <div class="pointer-events-auto">
+          <EnhanceControl onBoundsChange={(rect) => (enhanceBounds = rect)} />
+        </div>
+      {/if}
+    </div>
   </main>
 </div>
 

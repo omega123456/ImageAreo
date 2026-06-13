@@ -3,8 +3,7 @@ use imageareo_lib::associations::{
     validate_extensions, ASSOCIABLE_EXTENSIONS,
 };
 use imageareo_lib::commands::associations_runtime::{
-    query_file_associations as query_file_associations_command,
-    set_default_associations,
+    query_file_associations as query_file_associations_command, set_default_associations,
 };
 
 #[test]
@@ -100,7 +99,10 @@ async fn query_file_associations_command_returns_the_supported_extension_list() 
         .expect("association query should succeed");
 
     assert_eq!(associations.len(), ASSOCIABLE_EXTENSIONS.len());
-    assert_eq!(associations.first().map(|entry| entry.ext.as_str()), Some("jpg"));
+    assert_eq!(
+        associations.first().map(|entry| entry.ext.as_str()),
+        Some("jpg")
+    );
     assert!(associations.iter().any(|entry| entry.ext == "png"));
     assert!(associations.iter().any(|entry| entry.ext == "jxl"));
 }

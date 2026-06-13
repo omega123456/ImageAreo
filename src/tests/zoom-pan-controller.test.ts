@@ -17,6 +17,7 @@ function makeViewer(overrides: Partial<ViewerLike> = {}): ViewerLike {
     zoom: 1,
     pan: { x: 0, y: 0 },
     rotation: 0,
+    orientation: 1,
     fitMode: "fit",
     status: "ready",
     ...overrides,
@@ -90,6 +91,31 @@ describe("ZoomPanController", () => {
     const viewer = makeViewer();
     const c = new ZoomPanController(container, viewer);
     // min(400/800, 300/600) = 0.5
+    expect(c.fitZoom()).toBeCloseTo(0.5);
+    c.destroy();
+  });
+
+  it("fitZoom swaps width/height for a 90°/270° EXIF orientation", () => {
+    // Orientation 8 (rotate 270) turns the 800x600 image into a 600x800 display
+    // image, so the fit must use the swapped dimensions:
+    // min(400/600, 300/800) = 0.375, not the unrotated 0.5.
+    const viewer = makeViewer({ orientation: 8 });
+    const c = new ZoomPanController(container, viewer);
+    expect(c.fitZoom()).toBeCloseTo(0.375);
+    c.destroy();
+  });
+
+  it("fitZoom swaps width/height for a 90° user rotation", () => {
+    const viewer = makeViewer({ rotation: 90 });
+    const c = new ZoomPanController(container, viewer);
+    expect(c.fitZoom()).toBeCloseTo(0.375);
+    c.destroy();
+  });
+
+  it("fitZoom: a 90° orientation and a 90° rotation cancel out", () => {
+    // Two quarter-turns return the image to its original landscape aspect.
+    const viewer = makeViewer({ orientation: 8, rotation: 90 });
+    const c = new ZoomPanController(container, viewer);
     expect(c.fitZoom()).toBeCloseTo(0.5);
     c.destroy();
   });

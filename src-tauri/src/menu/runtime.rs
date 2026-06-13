@@ -55,7 +55,13 @@ pub fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
             &MenuItem::with_id(app, ids::FIT, "Fit to Screen", true, Some("F"))?,
             &MenuItem::with_id(app, ids::ACTUAL_SIZE, "Actual Size", true, Some("1"))?,
             &PredefinedMenuItem::separator(app)?,
-            &MenuItem::with_id(app, ids::TOGGLE_GALLERY, "Toggle Gallery", true, None::<&str>)?,
+            &MenuItem::with_id(
+                app,
+                ids::TOGGLE_GALLERY,
+                "Toggle Gallery",
+                true,
+                None::<&str>,
+            )?,
             &MenuItem::with_id(
                 app,
                 ids::TOGGLE_FULLSCREEN,

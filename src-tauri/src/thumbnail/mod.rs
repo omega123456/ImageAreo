@@ -12,7 +12,13 @@ use ::image::{
 use fast_image_resize as fir;
 use fast_image_resize::images::Image;
 
+use crate::cache_dirs;
 use crate::image::{self, DecodeImageError};
+
+/// Cache-key version for thumbnail pixel output. Bump whenever the produced
+/// pixels change so previously-cached files are invalidated. v2 bakes EXIF
+/// orientation into the pixels.
+const THUMBNAIL_CACHE_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ThumbnailData {
@@ -43,8 +49,11 @@ pub fn generate_thumbnail(
     }
 
     let loaded = image::load_thumbnail_source(path, logical_size.saturating_mul(2))?;
-    let (width, height) = target_dimensions(&loaded.image, logical_size);
-    let resized = resize_image(&loaded.image, width, height)?;
+    // Bake EXIF orientation into the pixels: the filmstrip renders this cached
+    // JPEG directly and applies no display transform of its own.
+    let oriented = image::apply_exif_orientation(loaded.image, loaded.orientation);
+    let (width, height) = target_dimensions(&oriented, logical_size);
+    let resized = resize_image(&oriented, width, height)?;
     let jpeg_bytes = encode_jpeg(&resized)?;
     write_cache_file(&cache_path, &jpeg_bytes)?;
 
@@ -69,8 +78,9 @@ pub fn sample_jpeg(path: &Path, logical_size: u32) -> Result<Vec<u8>, DecodeImag
     }
 
     let loaded = image::load_thumbnail_source(path, logical_size.saturating_mul(2))?;
-    let (width, height) = target_dimensions(&loaded.image, logical_size);
-    let resized = resize_image(&loaded.image, width, height)?;
+    let oriented = image::apply_exif_orientation(loaded.image, loaded.orientation);
+    let (width, height) = target_dimensions(&oriented, logical_size);
+    let resized = resize_image(&oriented, width, height)?;
     encode_jpeg(&resized)
 }
 
@@ -201,6 +211,9 @@ fn cache_path_for(path: &Path, logical_size: u32) -> Result<std::path::PathBuf, 
             })?;
 
     let mut hasher = DefaultHasher::new();
+    // Bump when the thumbnail pixel output changes so stale cache files are
+    // invalidated. v2: EXIF orientation is now baked into thumbnail pixels.
+    THUMBNAIL_CACHE_VERSION.hash(&mut hasher);
     path.to_string_lossy().hash(&mut hasher);
     logical_size.hash(&mut hasher);
     modified_since_epoch.as_secs().hash(&mut hasher);
@@ -211,7 +224,13 @@ fn cache_path_for(path: &Path, logical_size: u32) -> Result<std::path::PathBuf, 
 }
 
 fn cache_dir() -> std::path::PathBuf {
-    std::env::temp_dir().join("imageareo-thumbnails")
+    cache_dirs::thumbnail_cache_dir()
+}
+
+/// The thumbnail cache directory, exposed so cache maintenance can sweep it
+/// alongside the decoded-image cache. Does not create the directory.
+pub fn thumbnail_cache_dir() -> std::path::PathBuf {
+    cache_dir()
 }
 
 fn write_cache_file(cache_path: &Path, jpeg_bytes: &[u8]) -> Result<(), DecodeImageError> {

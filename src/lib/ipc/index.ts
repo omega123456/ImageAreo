@@ -52,11 +52,41 @@ export function scanFolder(request: ScanFolderRequest): Promise<ImageEntry[]> {
   );
 }
 
-export function decodeImage(request: DecodeImageRequest): Promise<DecodedImage> {
-  return invokeCommand<DecodedImage>(
+/** A decoded backend image with its cache path resolved to an asset URL. */
+export type DecodedImageWithUrl = DecodedImage & { url: string };
+
+export async function decodeImage(
+  request: DecodeImageRequest,
+): Promise<DecodedImageWithUrl> {
+  const decoded = await invokeCommand<DecodedImage>(
     IPC_COMMANDS.decodeImage,
     request as unknown as InvokeArgs,
   );
+  return {
+    ...decoded,
+    url: convertFileSrc(decoded.path),
+  };
+}
+
+/**
+ * Return an already-cached decode result for `request` without decoding, or
+ * `null` when nothing is cached. Used to prefer a previously-enhanced image on
+ * reopen without triggering a fresh demosaic.
+ */
+export async function peekDecodedImage(
+  request: DecodeImageRequest,
+): Promise<DecodedImageWithUrl | null> {
+  const decoded = await invokeCommand<DecodedImage | null>(
+    IPC_COMMANDS.peekDecodedImage,
+    request as unknown as InvokeArgs,
+  );
+  if (!decoded) {
+    return null;
+  }
+  return {
+    ...decoded,
+    url: convertFileSrc(decoded.path),
+  };
 }
 
 /** Small downscaled image as a same-origin data URL for backdrop sampling. */
@@ -67,15 +97,16 @@ export function sampleImage(request: SampleImageRequest): Promise<string> {
   );
 }
 
-export function generateThumbnail(
+export async function generateThumbnail(
   request: GenerateThumbnailRequest,
 ): Promise<Thumbnail> {
-  return invokeCommand<{ path: string }>(
+  const thumbnail = await invokeCommand<{ path: string }>(
     IPC_COMMANDS.generateThumbnail,
     request as unknown as InvokeArgs,
-  ).then((thumbnail) => ({
+  );
+  return {
     url: convertFileSrc(thumbnail.path),
-  }));
+  };
 }
 
 export function copyImageToClipboard(

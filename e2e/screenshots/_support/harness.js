@@ -35,6 +35,7 @@ export const FIXTURE_ENTRIES = ["a", "b", "c", "d", "e"].map((id, index) => ({
 /** Index of the entry the viewer opens by default (the blue gradient, c.png). */
 export const FOCUSED_INDEX = 2;
 export const FOCUSED_PATH = FIXTURE_ENTRIES[FOCUSED_INDEX].path;
+export const RAW_PATH = "/fixtures/raw.dng";
 
 /** A path the asset route never fulfills, freezing the viewer in `loading`. */
 export const SLOW_PATH = "/fixtures/slow.png";
@@ -60,6 +61,8 @@ function installTauriMock(page, config) {
     let eventId = 0;
 
     const basename = (p) => String(p).split(/[\\/]/).pop();
+    const decodedImages = cfg.decodedImages ?? {};
+    const sampledImages = cfg.sampledImages ?? {};
 
     const invoke = (cmd, args) => {
       switch (cmd) {
@@ -74,10 +77,20 @@ function installTauriMock(page, config) {
           // (served by page.route), so the sampling canvas reads cleanly and
           // the toolbar adapts to the actual fixture behind it.
           return Promise.resolve(
-            `${location.origin}/__e2e_asset__/${basename(args.path)}`,
+            `${location.origin}/__e2e_asset__/${
+              basename(sampledImages[args.path] ?? args.path)
+            }`,
           );
         case "decode_image":
-          return Promise.reject(new Error("decode_image not mocked"));
+          return Promise.resolve(
+            decodedImages[`${args.path}::${args.quality ?? "display"}`] ??
+              decodedImages[args.path] ??
+              Promise.reject(new Error("decode_image not mocked")),
+          );
+        case "peek_decoded_image":
+          return Promise.resolve(
+            decodedImages[`${args.path}::peek:${args.quality ?? "display"}`] ?? null,
+          );
         case "query_file_associations":
           return Promise.resolve(cfg.fileAssociations ?? undefined);
         case "plugin:event|listen":
@@ -148,6 +161,8 @@ function serveFixtures(page) {
  * @param {string|null} [opts.frontendReadyPath] path auto-opened on launch
  * @param {Array} [opts.entries] folder listing `scan_folder` returns
  * @param {Array} [opts.fileAssociations] file associations returned to the drawer
+ * @param {Record<string, unknown>} [opts.decodedImages] mocked backend decode payloads
+ * @param {Record<string, string>} [opts.sampledImages] path remap for sample_image
  */
 export async function bootApp(page, opts) {
   const {
@@ -155,11 +170,19 @@ export async function bootApp(page, opts) {
     frontendReadyPath = null,
     entries = FIXTURE_ENTRIES,
     fileAssociations,
+    decodedImages,
+    sampledImages,
   } = opts;
 
   await page.emulateMedia({ colorScheme: theme });
   await serveFixtures(page);
-  await installTauriMock(page, { frontendReadyPath, entries, fileAssociations });
+  await installTauriMock(page, {
+    frontendReadyPath,
+    entries,
+    fileAssociations,
+    decodedImages,
+    sampledImages,
+  });
 
   // Wait for DOM ready, not full `load`: the loading-state scenario holds an
   // asset request open forever, which would otherwise stall the `load` event.

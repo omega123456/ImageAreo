@@ -26,7 +26,7 @@ export const NEEDS_BACKEND_EXTENSIONS: ReadonlySet<string> = new Set([
   "heic",
   "heif",
   "jxl",
-  // Camera RAW formats.
+  // Camera RAW formats — must stay in sync with is_raw_extension() in src-tauri/src/image/mod.rs.
   "raw",
   "cr2",
   "cr3",
@@ -38,6 +38,34 @@ export const NEEDS_BACKEND_EXTENSIONS: ReadonlySet<string> = new Set([
   "raf",
   "srw",
   "pef",
+  "nrw",
+  "sr2",
+  "srf",
+  "kdc",
+  "erf",
+  "3fr",
+]);
+
+/** RAW formats that benefit from a staged preview-then-upgrade load.
+ * Must stay in sync with is_raw_extension() in src-tauri/src/image/mod.rs. */
+export const RAW_EXTENSIONS: ReadonlySet<string> = new Set([
+  "raw",
+  "cr2",
+  "cr3",
+  "nef",
+  "arw",
+  "dng",
+  "orf",
+  "rw2",
+  "raf",
+  "srw",
+  "pef",
+  "nrw",
+  "sr2",
+  "srf",
+  "kdc",
+  "erf",
+  "3fr",
 ]);
 
 /** Lower-cased extension of a path/filename, without the leading dot. */
@@ -57,6 +85,11 @@ export function isNativeFormat(path: string): boolean {
 export function isSupportedImage(path: string): boolean {
   const ext = extensionOf(path);
   return NATIVE_EXTENSIONS.has(ext) || NEEDS_BACKEND_EXTENSIONS.has(ext);
+}
+
+/** True when the path is a camera RAW format. */
+export function isRawFormat(path: string): boolean {
+  return RAW_EXTENSIONS.has(extensionOf(path));
 }
 
 /** All supported extensions, for use in open-dialog filters. */

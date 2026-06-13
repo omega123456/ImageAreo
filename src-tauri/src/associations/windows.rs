@@ -45,24 +45,25 @@ pub fn set_default_associations(exts: &[String]) -> Result<(), AssociationError>
 
 fn register_file_associations(exts: &[String]) -> Result<(), AssociationError> {
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    let (classes, _) = hkcu
-        .create_subkey(WINDOWS_CLASSES_PATH)
-        .map_err(|err| AssociationError::register(format!("failed to open classes registry hive: {err}")))?;
-    let exe_path = env::current_exe()
-        .map_err(|err| AssociationError::register(format!("failed to resolve current executable: {err}")))?;
+    let (classes, _) = hkcu.create_subkey(WINDOWS_CLASSES_PATH).map_err(|err| {
+        AssociationError::register(format!("failed to open classes registry hive: {err}"))
+    })?;
+    let exe_path = env::current_exe().map_err(|err| {
+        AssociationError::register(format!("failed to resolve current executable: {err}"))
+    })?;
     let command = format!("\"{}\" \"%1\"", exe_path.display());
 
     for ext in exts {
         let normalized = ext.as_str();
         let progid = progid_for(normalized);
 
-        let (command_key, _) = classes.create_subkey(format!(r"{progid}\shell\open\command")).map_err(
-            |err| {
+        let (command_key, _) = classes
+            .create_subkey(format!(r"{progid}\shell\open\command"))
+            .map_err(|err| {
                 AssociationError::register(format!(
                     "failed to create ProgID command key for .{normalized}: {err}"
                 ))
-            },
-        )?;
+            })?;
         command_key.set_value("", &command).map_err(|err| {
             AssociationError::register(format!(
                 "failed to set open command for .{normalized}: {err}"
@@ -85,7 +86,9 @@ fn register_file_associations(exts: &[String]) -> Result<(), AssociationError> {
 
     let (capabilities, _) = hkcu
         .create_subkey(WINDOWS_CAPABILITIES_PATH)
-        .map_err(|err| AssociationError::register(format!("failed to create capabilities key: {err}")))?;
+        .map_err(|err| {
+            AssociationError::register(format!("failed to create capabilities key: {err}"))
+        })?;
     capabilities
         .set_value("ApplicationName", &WINDOWS_APPLICATION_NAME)
         .map_err(|err| {
@@ -104,7 +107,9 @@ fn register_file_associations(exts: &[String]) -> Result<(), AssociationError> {
 
     let (file_associations, _) = capabilities
         .create_subkey("FileAssociations")
-        .map_err(|err| AssociationError::register(format!("failed to create FileAssociations key: {err}")))?;
+        .map_err(|err| {
+            AssociationError::register(format!("failed to create FileAssociations key: {err}"))
+        })?;
     for ext in exts {
         let normalized = ext.as_str();
         file_associations
@@ -116,9 +121,11 @@ fn register_file_associations(exts: &[String]) -> Result<(), AssociationError> {
             })?;
     }
 
-    let (registered_apps, _) = hkcu.create_subkey(WINDOWS_REGISTERED_APPLICATIONS_PATH).map_err(
-        |err| AssociationError::register(format!("failed to open RegisteredApplications key: {err}")),
-    )?;
+    let (registered_apps, _) = hkcu
+        .create_subkey(WINDOWS_REGISTERED_APPLICATIONS_PATH)
+        .map_err(|err| {
+            AssociationError::register(format!("failed to open RegisteredApplications key: {err}"))
+        })?;
     registered_apps
         .set_value(WINDOWS_APPLICATION_NAME, &WINDOWS_CAPABILITIES_PATH)
         .map_err(|err| {

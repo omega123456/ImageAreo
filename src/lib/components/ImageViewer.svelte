@@ -22,6 +22,8 @@
     fullscreen?: boolean;
     /** Height (px) of the filmstrip overlapping the bottom; reserved by "fit". */
     bottomInset?: number;
+    /** Viewport rect of the enhance control, sampled independently from the toolbar. */
+    enhanceBounds?: DOMRect | null;
   }
 
   let {
@@ -29,6 +31,7 @@
     onOpen,
     fullscreen = false,
     bottomInset = 0,
+    enhanceBounds = null,
   }: Props = $props();
 
   let container = $state<HTMLDivElement | null>(null);
@@ -42,52 +45,103 @@
   let samplerImg: HTMLImageElement | null = null;
   let samplerReady = $state(false);
 
+  function sampleTone(rectInContainer: { x: number; y: number; w: number; h: number }): number | null {
+    if (!container || !samplerReady || !samplerImg) return null;
+    if (!sampleCanvas) sampleCanvas = document.createElement("canvas");
+    const surround = getComputedStyle(container).backgroundColor;
+    return sampleRegionLuminance(
+      samplerImg,
+      {
+        cw: container.clientWidth,
+        ch: container.clientHeight,
+        natW: viewer.naturalWidth,
+        natH: viewer.naturalHeight,
+        zoom: viewer.zoom,
+        panX: viewer.pan.x,
+        panY: viewer.pan.y,
+        rotationDeg: viewer.rotation,
+        orientation: viewer.orientation,
+      },
+      rectInContainer,
+      sampleCanvas,
+      surround,
+    );
+  }
+
+  function clampRectToContainer(
+    rect: { x: number; y: number; w: number; h: number },
+    containerRect: DOMRect,
+  ): { x: number; y: number; w: number; h: number } | null {
+    const x = Math.max(0, rect.x);
+    const y = Math.max(0, rect.y);
+    const right = Math.min(containerRect.width, rect.x + rect.w);
+    const bottom = Math.min(containerRect.height, rect.y + rect.h);
+    const w = right - x;
+    const h = bottom - y;
+    return w > 0 && h > 0 ? { x, y, w, h } : null;
+  }
+
   /**
-   * Sample the image brightness behind the toolbar (top-center band) and pick a
-   * light/dark glyph tone so icons stay legible over any content. Falls back to
-   * the canvas-surround color when no image is shown or the sample is unreadable.
+   * Sample the image brightness behind the floating toolbar and enhance control,
+   * independently, so each glass surface adapts to the pixels directly under it.
+   * Falls back to the canvas-surround color when no image is shown or the sample
+   * is unreadable.
    */
-  function sampleToolbarTone(): void {
+  function sampleChromeTone(): void {
     if (typeof document === "undefined" || !container) return;
-    const rect = container.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return;
+    const containerRect = container.getBoundingClientRect();
+    if (containerRect.width <= 0 || containerRect.height <= 0) return;
 
     const surround = getComputedStyle(container).backgroundColor;
     const surroundLum = cssColorLuminance(surround);
 
     if (viewer.status === "ready" && samplerReady && samplerImg) {
-      if (!sampleCanvas) sampleCanvas = document.createElement("canvas");
-      const band = {
-        x: rect.width * 0.12,
+      const toolbarBand = {
+        x: containerRect.width * 0.12,
         y: 4,
-        w: rect.width * 0.76,
-        h: Math.min(64, rect.height),
+        w: containerRect.width * 0.76,
+        h: Math.min(64, containerRect.height),
       };
-      const lum = sampleRegionLuminance(
-        samplerImg,
-        {
-          cw: rect.width,
-          ch: rect.height,
-          natW: viewer.naturalWidth,
-          natH: viewer.naturalHeight,
-          zoom: viewer.zoom,
-          panX: viewer.pan.x,
-          panY: viewer.pan.y,
-          rotationDeg: viewer.rotation,
-          orientation: viewer.orientation,
-        },
-        band,
-        sampleCanvas,
-        surround,
-      );
-      if (lum !== null) {
-        chromeTone.toolbarDark = lum < 0.55;
-        return;
+      const toolbarLum = sampleTone(toolbarBand);
+      if (toolbarLum !== null) {
+        chromeTone.toolbarDark = toolbarLum < 0.55;
+      } else if (surroundLum !== null) {
+        chromeTone.toolbarDark = surroundLum < 0.55;
       }
+
+      if (enhanceBounds) {
+        const enhanceRect = clampRectToContainer(
+          {
+            x: enhanceBounds.left - containerRect.left,
+            y: enhanceBounds.top - containerRect.top,
+            w: enhanceBounds.width,
+            h: enhanceBounds.height,
+          },
+          containerRect,
+        );
+        if (enhanceRect) {
+          const enhanceLum = sampleTone(enhanceRect);
+          if (enhanceLum !== null) {
+            chromeTone.enhanceDark = enhanceLum < 0.55;
+          } else if (surroundLum !== null) {
+            chromeTone.enhanceDark = surroundLum < 0.55;
+          }
+        } else if (surroundLum !== null) {
+          chromeTone.enhanceDark = surroundLum < 0.55;
+        }
+      } else if (surroundLum !== null) {
+        chromeTone.enhanceDark = surroundLum < 0.55;
+      }
+
+      return;
     }
 
     // No image / unreadable sample: fall back to the surround brightness.
-    if (surroundLum !== null) chromeTone.toolbarDark = surroundLum < 0.55;
+    if (surroundLum !== null) {
+      const dark = surroundLum < 0.55;
+      chromeTone.toolbarDark = dark;
+      chromeTone.enhanceDark = dark;
+    }
   }
 
   // Preserve the last displayed name while a new image is decoding so the old
@@ -137,7 +191,7 @@
   // Fetch a small same-origin (data-URL) render of the current image from the
   // backend and load it as the sampling source.
   $effect(() => {
-    const path = viewer.path;
+    const path = viewer.samplePath ?? viewer.path;
     samplerReady = false;
     samplerImg = null;
     if (typeof Image === "undefined" || !path) return;
@@ -164,8 +218,8 @@
     };
   });
 
-  // Re-sample the toolbar backdrop when the image or view transform changes.
-  // Debounced so panning/zooming doesn't sample every frame.
+  // Re-sample floating-chrome backdrops when the image, transforms, or control
+  // geometry change. Debounced so panning/zooming doesn't sample every frame.
   $effect(() => {
     const _deps = [
       viewer.status,
@@ -176,10 +230,14 @@
       viewer.orientation,
       fullscreen,
       samplerReady,
+      enhanceBounds?.left,
+      enhanceBounds?.top,
+      enhanceBounds?.width,
+      enhanceBounds?.height,
     ];
     void _deps;
     if (typeof window === "undefined") return;
-    const id = window.setTimeout(sampleToolbarTone, 80);
+    const id = window.setTimeout(sampleChromeTone, 80);
     return () => window.clearTimeout(id);
   });
 

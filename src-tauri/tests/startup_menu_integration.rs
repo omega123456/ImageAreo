@@ -28,7 +28,10 @@ fn cold_launch_buffers_path_until_frontend_ready() {
     let buffer = LaunchPathBuffer::new();
     let emit_immediately = buffer.offer("/photos/cold.heic".to_string());
 
-    assert!(!emit_immediately, "pre-ready path must be buffered, not emitted");
+    assert!(
+        !emit_immediately,
+        "pre-ready path must be buffered, not emitted"
+    );
     assert!(!buffer.is_ready());
 
     // Frontend signals ready -> the buffered path is flushed exactly once.

@@ -3,12 +3,12 @@ mod common;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use ::image::{self as image_rs, DynamicImage, GenericImageView, ImageFormat, Rgba, RgbaImage};
+use ::image::{DynamicImage, GenericImageView, ImageFormat, Rgba, RgbaImage};
 use common::TempImageDir;
 use imageareo_lib::commands::clipboard::ClipboardCommandError;
 use imageareo_lib::commands::reveal::RevealCommandError;
 use imageareo_lib::commands::{self};
-use imageareo_lib::image::{self, ImageFormatSupport};
+use imageareo_lib::image::{self, DecodeIntent, ImageFormatSupport};
 use imageareo_lib::menu::{self, ids, MenuAction, MENU_EVENT};
 use imageareo_lib::startup::{parse_launch_path, LaunchPathBuffer};
 use imageareo_lib::thumbnail;
@@ -86,6 +86,7 @@ fn menu_actions_map_ids_and_emit_known_events_only() {
 
 #[tokio::test]
 async fn commands_return_expected_transport_shapes() {
+    let _cache = common::CacheGuard::new();
     let dir = TempImageDir::new();
     let later = dir.path().join("image-02.png");
     let earlier = dir.path().join("image-01.png");
@@ -98,11 +99,17 @@ async fn commands_return_expected_transport_shapes() {
     let names: Vec<_> = entries.into_iter().map(|entry| entry.name).collect();
     assert_eq!(names, vec!["image-01.png", "image-02.png"]);
 
-    let decoded =
-        commands::decode_image(fixture_path("sample.heic").to_string_lossy().into_owned())
-            .await
-            .expect("decode command should succeed");
-    assert!(decoded.data_url.starts_with("data:image/png;base64,"));
+    let decoded = commands::decode_image(
+        fixture_path("sample.heic").to_string_lossy().into_owned(),
+        None,
+    )
+    .await
+    .expect("decode command should succeed");
+    let images_root = image::disk_cache::cache_dir()
+        .to_string_lossy()
+        .into_owned();
+    assert!(decoded.path.starts_with(&images_root));
+    assert!(!decoded.path.starts_with("data:"));
     assert_eq!(
         (decoded.width, decoded.height, decoded.orientation),
         (48, 48, 1)
@@ -114,8 +121,7 @@ async fn commands_return_expected_transport_shapes() {
     )
     .await
     .expect("thumbnail command should succeed");
-    let cache_root = std::env::temp_dir()
-        .join("imageareo-thumbnails")
+    let cache_root = thumbnail::thumbnail_cache_dir()
         .to_string_lossy()
         .into_owned();
     assert!(thumbnail.path.starts_with(&cache_root));
@@ -154,22 +160,22 @@ fn image_public_logic_handles_classification_and_missing_backend_paths() {
     let missing_jxl = dir.path().join("missing.jxl");
     let missing_raw = dir.path().join("missing.cr2");
     assert_eq!(
-        image::decode_image_path(&missing_heic)
+        image::decode_to_cache(&missing_heic, DecodeIntent::Display)
             .expect_err("missing heic should fail")
             .code,
         "io_error"
     );
     assert_eq!(
-        image::decode_image_path(&missing_jxl)
+        image::decode_to_cache(&missing_jxl, DecodeIntent::Display)
             .expect_err("missing jxl should fail")
             .code,
-        "decode_failed"
+        "io_error"
     );
     assert_eq!(
-        image::decode_image_path(&missing_raw)
+        image::decode_to_cache(&missing_raw, DecodeIntent::Display)
             .expect_err("missing raw should fail")
             .code,
-        "decode_failed"
+        "io_error"
     );
 }
 
@@ -203,11 +209,52 @@ fn command_error_structs_keep_expected_codes() {
 }
 
 #[test]
-fn encoded_png_transport_from_public_decoder_is_decodable() {
-    let decoded =
-        image::decode_image_path(&fixture_path("sample.heic")).expect("heic fixture should decode");
-    let transport = image_rs::load_from_memory_with_format(&decoded.png_bytes, ImageFormat::Png)
-        .expect("transport should decode as png");
+fn display_intent_cache_file_from_public_decoder_is_decodable() {
+    let decoded = image::decode_to_cache(&fixture_path("sample.heic"), DecodeIntent::Display)
+        .expect("heic fixture should decode");
+    let on_disk = ::image::open(&decoded.path).expect("cache file should decode");
 
-    assert_eq!(transport.dimensions(), (48, 48));
+    assert_eq!(on_disk.dimensions(), (48, 48));
+}
+
+#[test]
+fn load_full_image_cached_supports_native_and_backend_sources() {
+    let _cache = common::CacheGuard::new();
+    let dir = TempImageDir::new();
+    let native = dir.path().join("native.png");
+    write_image(&native, 7, 5, ImageFormat::Png);
+
+    let (native_image, native_orientation) =
+        image::load_full_image_cached(&native).expect("native image should load");
+    assert_eq!(native_image.dimensions(), (7, 5));
+    assert_eq!(native_orientation, 1);
+
+    let (backend_image, backend_orientation) =
+        image::load_full_image_cached(&fixture_path("sample.heic"))
+            .expect("backend image should load via display cache");
+    assert_eq!(backend_image.dimensions(), (48, 48));
+    assert_eq!(backend_orientation, 1);
+}
+
+#[tokio::test]
+async fn command_wrappers_cover_error_paths_and_native_peek_behavior() {
+    let dir = TempImageDir::new();
+    let png = dir.path().join("sample.png");
+    write_image(&png, 16, 12, ImageFormat::Png);
+
+    let zero_size = commands::sample_image(png.to_string_lossy().into_owned(), 0)
+        .await
+        .expect_err("zero sample size should error");
+    assert_eq!(zero_size.code, "decode_failed");
+
+    let native_peek =
+        commands::peek_decoded_image(png.to_string_lossy().into_owned(), DecodeIntent::Display)
+            .await
+            .expect("native formats are never cached in the backend");
+    assert!(native_peek.is_none());
+
+    let thumb_zero = commands::generate_thumbnail(png.to_string_lossy().into_owned(), 0)
+        .await
+        .expect_err("zero thumbnail size should error");
+    assert_eq!(thumb_zero.code, "decode_failed");
 }

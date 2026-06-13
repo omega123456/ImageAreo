@@ -26,6 +26,8 @@ export interface ViewerLike {
   zoom: number;
   pan: Pan;
   rotation: Rotation;
+  /** EXIF orientation (1–8) applied as a display transform by `ImageViewer`. */
+  orientation: number;
   fitMode: FitMode;
   status: ViewerStatus;
 }
@@ -177,14 +179,30 @@ export class ZoomPanController {
     return { width: rect.width, height: rect.height };
   }
 
+  /**
+   * The image's on-screen dimensions, accounting for the quarter-turns applied
+   * by EXIF orientation and the user's rotation. A single quarter-turn (90°/270°)
+   * swaps width and height; two quarter-turns cancel. Without this, the fit and
+   * pan-clamp math would treat a rotated portrait image as if it were landscape.
+   */
+  private effectiveDimensions(): { width: number; height: number } {
+    const { naturalWidth, naturalHeight, orientation, rotation } = this.viewer;
+    const orientationSwaps = orientation >= 5 && orientation <= 8;
+    const rotationSwaps = rotation === 90 || rotation === 270;
+    if (orientationSwaps !== rotationSwaps) {
+      return { width: naturalHeight, height: naturalWidth };
+    }
+    return { width: naturalWidth, height: naturalHeight };
+  }
+
   /** The zoom factor that fits the image inside the container. */
   fitZoom(): number {
-    const { naturalWidth, naturalHeight } = this.viewer;
-    if (naturalWidth <= 0 || naturalHeight <= 0) return 1;
+    const { width: imageWidth, height: imageHeight } = this.effectiveDimensions();
+    if (imageWidth <= 0 || imageHeight <= 0) return 1;
     const { width, height } = this.containerSize();
     const fitHeight = height - this.bottomInset;
     if (width <= 0 || fitHeight <= 0) return 1;
-    return Math.min(width / naturalWidth, fitHeight / naturalHeight);
+    return Math.min(width / imageWidth, fitHeight / imageHeight);
   }
 
   private clampZoom(z: number): number {
@@ -199,10 +217,11 @@ export class ZoomPanController {
    * the offset to range so the image edge stops at the container edge.
    */
   private clampPan(pan: Pan): Pan {
-    const { naturalWidth, naturalHeight, zoom } = this.viewer;
+    const { zoom } = this.viewer;
+    const { width: imageWidth, height: imageHeight } = this.effectiveDimensions();
     const { width, height } = this.containerSize();
-    const scaledW = naturalWidth * zoom;
-    const scaledH = naturalHeight * zoom;
+    const scaledW = imageWidth * zoom;
+    const scaledH = imageHeight * zoom;
 
     const clampAxis = (offset: number, scaled: number, container: number): number => {
       if (scaled <= container) return 0;

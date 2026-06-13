@@ -19,7 +19,9 @@ use serde::Serialize;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DecodedImage {
-    pub data_url: String,
+    /// Absolute path to the on-disk cache file; the frontend wraps it with
+    /// `convertFileSrc`. No pixel bytes cross the IPC boundary.
+    pub path: String,
     pub width: u32,
     pub height: u32,
     pub orientation: u16,
@@ -40,18 +42,51 @@ pub async fn scan_folder(
 }
 
 #[tauri::command(rename_all = "camelCase")]
-pub async fn decode_image(path: String) -> Result<DecodedImage, DecodeImageError> {
-    let decoded = image::decode_image_path(std::path::Path::new(&path))?;
+pub async fn decode_image(
+    path: String,
+    quality: Option<image::DecodeIntent>,
+) -> Result<DecodedImage, DecodeImageError> {
+    let path = std::path::PathBuf::from(path);
+    let intent = quality.unwrap_or(image::DecodeIntent::Display);
+    let decoded =
+        tauri::async_runtime::spawn_blocking(move || image::decode_to_cache(&path, intent))
+            .await
+            .map_err(|err| DecodeImageError {
+                code: "decode_failed",
+                message: format!("decode task failed: {err}"),
+            })??;
 
     Ok(DecodedImage {
-        data_url: format!(
-            "data:image/png;base64,{}",
-            STANDARD.encode(decoded.png_bytes)
-        ),
+        path: decoded.path.to_string_lossy().into_owned(),
         width: decoded.width,
         height: decoded.height,
         orientation: decoded.orientation,
     })
+}
+
+/// Return an already-cached decode result for `path`/`quality` without ever
+/// decoding. The viewer uses this on reopen to prefer a previously-enhanced
+/// image, without triggering a fresh (heavy) demosaic when none is cached.
+/// Resolves to `null` when no cache file exists.
+#[tauri::command(rename_all = "camelCase")]
+pub async fn peek_decoded_image(
+    path: String,
+    quality: image::DecodeIntent,
+) -> Result<Option<DecodedImage>, DecodeImageError> {
+    let path = std::path::PathBuf::from(path);
+    let cached = tauri::async_runtime::spawn_blocking(move || image::lookup_cached(&path, quality))
+        .await
+        .map_err(|err| DecodeImageError {
+            code: "decode_failed",
+            message: format!("cache lookup task failed: {err}"),
+        })??;
+
+    Ok(cached.map(|decoded| DecodedImage {
+        path: decoded.path.to_string_lossy().into_owned(),
+        width: decoded.width,
+        height: decoded.height,
+        orientation: decoded.orientation,
+    }))
 }
 
 /// Return a small downscaled JPEG of `path` as a base64 data URL, used by the

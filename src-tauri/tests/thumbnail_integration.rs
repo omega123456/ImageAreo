@@ -7,6 +7,7 @@ use ::image::{self as image_rs, GenericImageView, ImageFormat};
 use common::TempImageDir;
 use exif::experimental::Writer as ExifWriter;
 use exif::{Field, In, Tag, Value};
+use filetime::FileTime;
 use imageareo_lib::commands;
 use imageareo_lib::thumbnail;
 
@@ -44,6 +45,7 @@ fn generate_thumbnail_uses_scaled_jpeg_decode_path() {
 
 #[test]
 fn generate_thumbnail_preserves_aspect_ratio_for_exotic_fixture() {
+    let _cache = common::CacheGuard::new();
     let path = fixture_path("sample.heic");
 
     let thumbnail = thumbnail::generate_thumbnail(&path, 15).expect("thumbnail should succeed");
@@ -56,6 +58,7 @@ fn generate_thumbnail_preserves_aspect_ratio_for_exotic_fixture() {
 
 #[tokio::test]
 async fn generate_thumbnail_command_returns_cache_path_for_jxl_fixture() {
+    let _cache = common::CacheGuard::new();
     let thumbnail = commands::generate_thumbnail(path_string(&fixture_path("sample.jxl")), 18)
         .await
         .expect("command should succeed");
@@ -185,6 +188,19 @@ fn sample_jpeg_downscales_to_jpeg_bytes() {
 }
 
 #[test]
+fn sample_jpeg_uses_embedded_exif_thumbnail_without_upscaling() {
+    let dir = TempImageDir::new();
+    let path = dir.path().join("sample-embedded.jpg");
+    write_jpeg_with_embedded_thumbnail(&path, 1600, 1200, 120, 90);
+
+    let bytes = thumbnail::sample_jpeg(&path, 80).expect("sample should succeed");
+    let decoded = image_rs::load_from_memory_with_format(&bytes, ImageFormat::Jpeg)
+        .expect("sample bytes should decode as JPEG");
+
+    assert_eq!(decoded.dimensions(), (120, 90));
+}
+
+#[test]
 fn sample_jpeg_rejects_zero_size() {
     let dir = TempImageDir::new();
     let path = dir.path().join("sample.png");
@@ -219,13 +235,135 @@ async fn sample_image_command_propagates_errors() {
     assert_eq!(error.code, "unsupported_format");
 }
 
+#[test]
+fn target_dimensions_cap_at_double_logical_size_and_handle_orientation() {
+    use thumbnail::__test_support::target_dimensions_for;
+    let landscape = image_rs::DynamicImage::ImageRgba8(image_rs::RgbaImage::new(400, 200));
+    // logical_size 50 → max edge 100; landscape caps width.
+    assert_eq!(target_dimensions_for(&landscape, 50), (100, 50));
+
+    let portrait = image_rs::DynamicImage::ImageRgba8(image_rs::RgbaImage::new(200, 400));
+    assert_eq!(target_dimensions_for(&portrait, 50), (50, 100));
+
+    // Sources smaller than the cap are never upscaled.
+    let tiny = image_rs::DynamicImage::ImageRgba8(image_rs::RgbaImage::new(8, 6));
+    assert_eq!(target_dimensions_for(&tiny, 50), (8, 6));
+}
+
+#[test]
+fn resize_and_encode_seams_round_trip_through_a_decodable_jpeg() {
+    use thumbnail::__test_support::{encode_jpeg_for, resize_image_for};
+    let source = image_rs::DynamicImage::ImageRgba8(image_rs::RgbaImage::from_pixel(
+        40,
+        30,
+        image_rs::Rgba([12, 34, 56, 255]),
+    ));
+
+    let resized = resize_image_for(&source, 20, 15).expect("resize should succeed");
+    assert_eq!(resized.dimensions(), (20, 15));
+
+    let bytes = encode_jpeg_for(&resized).expect("encode should succeed");
+    let decoded = image_rs::load_from_memory_with_format(&bytes, ImageFormat::Jpeg)
+        .expect("encoded thumbnail should decode");
+    assert_eq!(decoded.dimensions(), (20, 15));
+}
+
+#[test]
+fn cache_file_seams_write_idempotently_and_read_dimensions() {
+    use thumbnail::__test_support::{
+        cache_path_for, read_cached_dimensions_for, write_cache_file_for,
+    };
+    let _cache = common::CacheGuard::new();
+    let dir = TempImageDir::new();
+    let source = dir.path().join("seam.png");
+    common::write_dynamic_fixture(&source, 8, 8, ImageFormat::Png);
+
+    let cache_path = cache_path_for(&source, 24).expect("cache path should compute");
+
+    let jpeg = {
+        let img = image_rs::DynamicImage::ImageRgb8(image_rs::RgbImage::from_pixel(
+            10,
+            6,
+            image_rs::Rgb([1, 2, 3]),
+        ));
+        let mut buf = Cursor::new(Vec::new());
+        img.write_to(&mut buf, ImageFormat::Jpeg)
+            .expect("jpeg should encode");
+        buf.into_inner()
+    };
+
+    write_cache_file_for(&cache_path, &jpeg).expect("first write should succeed");
+    // A second write for an existing cache file is a no-op that discards the temp.
+    write_cache_file_for(&cache_path, &jpeg).expect("second write should succeed");
+
+    let (width, height) = read_cached_dimensions_for(&cache_path).expect("dimensions should read");
+    assert_eq!((width, height), (10, 6));
+}
+
+#[test]
+fn cache_path_seam_rejects_pre_unix_epoch_mtime() {
+    use thumbnail::__test_support::cache_path_for;
+
+    let dir = TempImageDir::new();
+    let source = dir.path().join("pre-epoch.png");
+    common::write_dynamic_fixture(&source, 8, 8, ImageFormat::Png);
+    filetime::set_file_mtime(&source, FileTime::from_unix_time(-1, 0))
+        .expect("mtime should be set before the unix epoch");
+
+    let error = cache_path_for(&source, 24).expect_err("pre-epoch mtimes should be rejected");
+    assert_eq!(error.code, "io_error");
+    assert!(error.message.contains("before unix epoch"));
+}
+
+#[test]
+fn read_cached_dimensions_seam_errors_for_missing_and_non_image_files() {
+    use thumbnail::__test_support::read_cached_dimensions_for;
+    let dir = TempImageDir::new();
+
+    let missing = dir.path().join("absent.jpg");
+    let missing_err = read_cached_dimensions_for(&missing).expect_err("missing file should error");
+    assert_eq!(missing_err.code, "io_error");
+
+    let garbage = dir.path().join("garbage.jpg");
+    std::fs::write(&garbage, b"definitely not a jpeg").expect("fixture write should succeed");
+    let garbage_err =
+        read_cached_dimensions_for(&garbage).expect_err("non-image file should error");
+    assert_eq!(garbage_err.code, "decode_failed");
+}
+
+#[cfg(unix)]
+#[test]
+fn cache_file_seam_reports_temp_write_failures() {
+    use std::os::unix::fs::PermissionsExt;
+    use thumbnail::__test_support::write_cache_file_for;
+
+    let dir = TempImageDir::new();
+    let readonly = dir.path().join("readonly");
+    std::fs::create_dir(&readonly).expect("readonly cache dir should create");
+    let mut perms = std::fs::metadata(&readonly)
+        .expect("readonly dir metadata should read")
+        .permissions();
+    perms.set_mode(0o555);
+    std::fs::set_permissions(&readonly, perms).expect("readonly perms should apply");
+
+    let cache_path = readonly.join("cache.jpg");
+    let error = write_cache_file_for(&cache_path, b"not-a-jpeg")
+        .expect_err("temp write should fail in readonly directory");
+    assert_eq!(error.code, "io_error");
+
+    let mut cleanup_perms = std::fs::metadata(&readonly)
+        .expect("readonly dir metadata should read")
+        .permissions();
+    cleanup_perms.set_mode(0o755);
+    std::fs::set_permissions(&readonly, cleanup_perms).expect("cleanup perms should apply");
+}
+
 fn decode_jpeg_file(path: &Path) -> image_rs::DynamicImage {
     image_rs::open(path).expect("thumbnail JPEG should decode")
 }
 
 fn assert_cache_path(path: &str) {
-    let cache_root = std::env::temp_dir()
-        .join("imageareo-thumbnails")
+    let cache_root = thumbnail::thumbnail_cache_dir()
         .to_string_lossy()
         .into_owned();
     assert!(path.starts_with(&cache_root));

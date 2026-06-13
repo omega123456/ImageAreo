@@ -1,4 +1,5 @@
 pub mod associations;
+pub mod cache_dirs;
 pub mod commands;
 pub mod folder;
 pub mod image;
@@ -80,6 +81,21 @@ pub fn run() {
             app.on_menu_event(|app, event| {
                 menu::route_menu_event(app, event.id().as_ref());
             });
+
+            // Evict cache files older than the two-day window from both the
+            // decoded-image cache and the thumbnail cache. The sweep runs off the
+            // UI thread so it never delays launch, and a missing cache directory
+            // on first run is a no-op (handled inside `sweep_caches`). The
+            // decision logic is unit-tested in `cache_maintenance`; this is pure
+            // OS-side-effect hookup (coverage-excluded).
+            std::thread::spawn(|| {
+                let dirs = [
+                    image::disk_cache::cache_dir(),
+                    thumbnail::thumbnail_cache_dir(),
+                ];
+                image::cache_maintenance::sweep_caches(&dirs);
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -88,6 +104,7 @@ pub fn run() {
             commands::associations_runtime::set_default_associations,
             commands::scan_folder,
             commands::decode_image,
+            commands::peek_decoded_image,
             commands::sample_image,
             commands::generate_thumbnail,
             commands::clipboard_runtime::copy_image_to_clipboard,

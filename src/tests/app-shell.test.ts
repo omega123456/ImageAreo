@@ -218,6 +218,44 @@ describe("App", () => {
     expect(screen.queryByTestId("toolbar-overlay")).toBeNull();
   });
 
+  it("shows the Enhance control only for a RAW image once the display is ready", async () => {
+    viewer.status = "ready";
+    viewer.path = "/photos/shot.dng";
+    viewer.upgrading = false;
+    viewer.enhanceAvailable = false;
+
+    render(App);
+
+    expect(screen.queryByTestId("enhance-control")).toBeNull();
+
+    viewer.enhanceAvailable = true;
+    await waitFor(() => {
+      expect(screen.getByTestId("enhance-control")).toBeInTheDocument();
+    });
+  });
+
+  it("hides the Enhance control while a RAW upgrade is still in flight", async () => {
+    viewer.status = "ready";
+    viewer.path = "/photos/shot.dng";
+    viewer.enhanceAvailable = true;
+    viewer.upgrading = true;
+
+    render(App);
+
+    expect(screen.queryByTestId("enhance-control")).toBeNull();
+  });
+
+  it("never shows the Enhance control for a non-RAW image", () => {
+    viewer.status = "ready";
+    viewer.path = "/photos/photo.jpg";
+    viewer.enhanceAvailable = true;
+    viewer.upgrading = false;
+
+    render(App);
+
+    expect(screen.queryByTestId("enhance-control")).toBeNull();
+  });
+
   it("disables chrome fade transitions when reduced motion is enabled", () => {
     setReducedMotion(true);
     viewer.status = "ready";

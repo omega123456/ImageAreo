@@ -2,7 +2,10 @@ use core_foundation::base::{OSStatus, TCFType};
 use core_foundation::string::CFString;
 use core_foundation_sys::string::CFStringRef;
 
-use super::{uti_for, validate_extensions, AssociationError, ExtAssociation, ASSOCIABLE_EXTENSIONS, BUNDLE_ID};
+use super::{
+    uti_for, validate_extensions, AssociationError, ExtAssociation, ASSOCIABLE_EXTENSIONS,
+    BUNDLE_ID,
+};
 
 const KLS_ROLES_VIEWER: u32 = 0x0000_0002;
 
@@ -33,8 +36,8 @@ pub fn query_file_associations() -> Result<Vec<ExtAssociation>, AssociationError
 
     for ext in ASSOCIABLE_EXTENSIONS {
         let uti = preferred_uti(ext)?;
-        let is_default = current_handler_bundle_id(&uti)?
-            .is_some_and(|bundle_id| bundle_id == BUNDLE_ID);
+        let is_default =
+            current_handler_bundle_id(&uti)?.is_some_and(|bundle_id| bundle_id == BUNDLE_ID);
 
         associations.push(ExtAssociation {
             ext: (*ext).to_string(),
@@ -93,8 +96,9 @@ fn preferred_uti(ext: &str) -> Result<CFString, AssociationError> {
 }
 
 fn current_handler_bundle_id(uti: &CFString) -> Result<Option<String>, AssociationError> {
-    let handler_ref =
-        unsafe { LSCopyDefaultRoleHandlerForContentType(uti.as_concrete_TypeRef(), KLS_ROLES_VIEWER) };
+    let handler_ref = unsafe {
+        LSCopyDefaultRoleHandlerForContentType(uti.as_concrete_TypeRef(), KLS_ROLES_VIEWER)
+    };
 
     if handler_ref.is_null() {
         return Ok(None);

@@ -1,11 +1,18 @@
+mod common;
+
+use std::collections::HashMap;
 use std::path::Path;
 
 use ::image::{self as image_rs, DynamicImage, GenericImageView, ImageFormat, Rgba, RgbaImage};
-use jpeg_decoder::PixelFormat as JpegPixelFormat;
 use imageareo_lib::commands::clipboard::__test_support as clipboard_private;
 use imageareo_lib::commands::reveal::__test_support as reveal_private;
 use imageareo_lib::image::__test_support as image_private;
 use imageareo_lib::thumbnail::__test_support as thumbnail_private;
+use jpeg_decoder::PixelFormat as JpegPixelFormat;
+use rawler::decoders::{
+    BlackLevel, Camera, Orientation as RawOrientation, RawPhotometricInterpretation, WhiteLevel,
+};
+use rawler::{RawImage, RawImageData};
 
 #[test]
 fn command_private_error_helpers_keep_expected_codes() {
@@ -70,11 +77,49 @@ fn image_private_helpers_are_covered_from_integration_tests() {
         .expect("encoded bytes should decode as png");
     assert_eq!(decoded.dimensions(), (4, 3));
 
+    let encoded_jpeg =
+        image_private::encode_display_jpeg_for(&image).expect("jpeg encode should succeed");
+    let decoded_jpeg = image_rs::load_from_memory_with_format(&encoded_jpeg, ImageFormat::Jpeg)
+        .expect("encoded bytes should decode as jpeg");
+    assert_eq!(decoded_jpeg.dimensions(), (4, 3));
+
     assert_eq!(
         image_private::read_orientation_for(&dir.path().join("missing.jpg")),
         1
     );
     assert_eq!(image_private::read_orientation_for(&png), 1);
+
+    let large = DynamicImage::ImageRgba8(RgbaImage::from_pixel(80, 40, Rgba([5, 6, 7, 255])));
+    assert_eq!(
+        image_private::downscale_to_cap_for(&large, 20)
+            .expect("large image should downscale")
+            .dimensions(),
+        (20, 10)
+    );
+    assert_eq!(
+        image_private::downscale_to_cap_for(&image, 100)
+            .expect("small image should pass through")
+            .dimensions(),
+        (4, 3)
+    );
+
+    assert!(image_private::is_raw_extension_for(Path::new(
+        "/tmp/file.CR3"
+    )));
+    assert!(!image_private::is_raw_extension_for(Path::new(
+        "/tmp/file.png"
+    )));
+
+    let native_backend_error = image_private::load_backend_image_path_for(&png, 1)
+        .expect_err("native formats should be rejected by backend-only decoder");
+    assert_eq!(native_backend_error.code, "unsupported_format");
+
+    let unsupported_backend = dir.path().join("notes.txt");
+    std::fs::write(&unsupported_backend, b"plain text").expect("unsupported fixture should write");
+    let unsupported_backend_error =
+        image_private::load_backend_image_path_for(&unsupported_backend, 1)
+            .expect_err("unsupported formats should be rejected by backend-only decoder");
+    assert_eq!(unsupported_backend_error.code, "unsupported_format");
 
     let decoded_native =
         image_private::decode_with_image_crate_for(&png).expect("native decode should succeed");
@@ -196,6 +241,60 @@ fn image_private_helpers_are_covered_from_integration_tests() {
         .expect_err("empty jpeg should fail inspection or decode");
     assert_eq!(inspect_error.code, "decode_failed");
 
+    let rgb8_raw = image_private::raw_image_to_dynamic_image_for(raw_image(
+        2,
+        1,
+        3,
+        8,
+        RawImageData::Integer(vec![1, 2, 3, 4, 5, 6]),
+    ))
+    .expect("rgb8 raw image should convert");
+    assert_eq!(rgb8_raw.dimensions(), (2, 1));
+
+    let rgb16_raw = image_private::raw_image_to_dynamic_image_for(raw_image(
+        1,
+        1,
+        3,
+        16,
+        RawImageData::Integer(vec![1, 2, 3]),
+    ))
+    .expect("rgb16 raw image should convert");
+    assert_eq!(rgb16_raw.dimensions(), (1, 1));
+
+    let rgb32f_raw = image_private::raw_image_to_dynamic_image_for(raw_image(
+        1,
+        1,
+        3,
+        32,
+        RawImageData::Float(vec![0.1, 0.2, 0.3]),
+    ))
+    .expect("rgb32f raw image should convert");
+    assert_eq!(rgb32f_raw.dimensions(), (1, 1));
+
+    let bad_integer_cpp = image_private::raw_image_to_dynamic_image_for(raw_image(
+        1,
+        1,
+        1,
+        8,
+        RawImageData::Integer(vec![1]),
+    ))
+    .expect_err("non-rgb integer raw image should fail");
+    assert!(bad_integer_cpp
+        .to_string()
+        .contains("unsupported RAW integer channel count"));
+
+    let bad_float_cpp = image_private::raw_image_to_dynamic_image_for(raw_image(
+        1,
+        1,
+        1,
+        32,
+        RawImageData::Float(vec![0.1]),
+    ))
+    .expect_err("non-rgb float raw image should fail");
+    assert!(bad_float_cpp
+        .to_string()
+        .contains("unsupported RAW float channel count"));
+
     assert_eq!(
         image_private::unsupported_error("bad extension").code,
         "unsupported_format"
@@ -259,16 +358,14 @@ fn thumbnail_private_helpers_are_covered_from_integration_tests() {
         cache_path.extension().and_then(|ext| ext.to_str()),
         Some("jpg")
     );
-    let missing_cache_path = thumbnail_private::cache_path_for(Path::new("/tmp/no-such-thumb.jpg"), 12)
-        .expect_err("missing source should fail");
+    let missing_cache_path =
+        thumbnail_private::cache_path_for(Path::new("/tmp/no-such-thumb.jpg"), 12)
+            .expect_err("missing source should fail");
     assert_eq!(missing_cache_path.code, "io_error");
 
-    let cache_bytes = thumbnail_private::encode_jpeg_for(&RgbaImage::from_pixel(
-        4,
-        3,
-        Rgba([12, 34, 56, 255]),
-    ))
-    .expect("encode should succeed");
+    let cache_bytes =
+        thumbnail_private::encode_jpeg_for(&RgbaImage::from_pixel(4, 3, Rgba([12, 34, 56, 255])))
+            .expect("encode should succeed");
     thumbnail_private::write_cache_file_for(&cache_path, &cache_bytes)
         .expect("cache write should succeed");
     thumbnail_private::write_cache_file_for(&cache_path, &cache_bytes)
@@ -277,18 +374,15 @@ fn thumbnail_private_helpers_are_covered_from_integration_tests() {
         .expect("cached dimensions should decode");
     assert_eq!(cached_dimensions, (4, 3));
 
-    let no_parent_error =
-        thumbnail_private::write_cache_file_for(Path::new(""), &cache_bytes)
-            .expect_err("cache path without parent should fail");
+    let no_parent_error = thumbnail_private::write_cache_file_for(Path::new(""), &cache_bytes)
+        .expect_err("cache path without parent should fail");
     assert_eq!(no_parent_error.code, "io_error");
 
     let blocked_parent = dir.path().join("not-a-dir");
     std::fs::write(&blocked_parent, b"file").expect("blocking file should write");
-    let blocked_parent_error = thumbnail_private::write_cache_file_for(
-        &blocked_parent.join("thumb.jpg"),
-        &cache_bytes,
-    )
-    .expect_err("existing file parent should fail create_dir_all");
+    let blocked_parent_error =
+        thumbnail_private::write_cache_file_for(&blocked_parent.join("thumb.jpg"), &cache_bytes)
+            .expect_err("existing file parent should fail create_dir_all");
     assert_eq!(blocked_parent_error.code, "io_error");
 
     let invalid_cached = dir.path().join("invalid-cache.jpg");
@@ -305,4 +399,30 @@ fn thumbnail_private_helpers_are_covered_from_integration_tests() {
         thumbnail_private::read_cached_dimensions_for(&dir.path().join("missing-cache.jpg"))
             .expect_err("missing cached file should fail");
     assert_eq!(missing_cached_error.code, "io_error");
+}
+
+fn raw_image(width: usize, height: usize, cpp: usize, bps: usize, data: RawImageData) -> RawImage {
+    RawImage {
+        camera: Camera::default(),
+        make: "Test".to_string(),
+        model: "Fixture".to_string(),
+        clean_make: "Test".to_string(),
+        clean_model: "Fixture".to_string(),
+        width,
+        height,
+        cpp,
+        bps,
+        wb_coeffs: [1.0, 1.0, 1.0, 1.0],
+        whitelevel: WhiteLevel::new(vec![u16::MAX as u32; cpp.max(1)]),
+        blacklevel: BlackLevel::zero(1, 1, cpp.max(1)),
+        xyz_to_cam: [[0.0; 3]; 4],
+        photometric: RawPhotometricInterpretation::LinearRaw,
+        active_area: None,
+        crop_area: None,
+        blackareas: Vec::new(),
+        orientation: RawOrientation::Normal,
+        data,
+        color_matrix: HashMap::new(),
+        dng_tags: HashMap::new(),
+    }
 }

@@ -70,7 +70,19 @@ core-foundation-sys = "0.8"
 # Integration-test harness (P3). `tempfile` builds isolated fixture folders;
 # `tokio` test-util drives async command bodies; the `tauri` test feature lets
 # integration tests construct a mock app context.
+ctor = "~0.2"
 filetime = "~0.2"
+# Names the `PixelFormat` enum that `image::__test_support::image_from_jpeg_pixels_for`
+# accepts, so the scaled-JPEG pixel-mapping branches can be unit-tested directly.
+jpeg-decoder = "0.3.2"
 tempfile = "~3.20"
 tokio = { version = "~1", features = ["macros", "rt", "test-util"] }
 tauri = { version = "~2.11", features = ["test"] }
+
+# Compile dependencies with full optimization even in the dev profile. Image
+# decode/resize/encode (rawler, image, fast_image_resize, jxl-oxide, heic) is
+# SIMD- and loop-heavy; unoptimized it is 5-10x slower, which dominated RAW
+# `tauri:dev` decode time. Our own crate stays at the default dev opt-level so
+# incremental rebuilds remain fast.
+[profile.dev.package."*"]
+opt-level = 3

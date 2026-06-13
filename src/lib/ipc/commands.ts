@@ -4,6 +4,7 @@ export const IPC_COMMANDS = {
   setDefaultAssociations: "set_default_associations",
   scanFolder: "scan_folder",
   decodeImage: "decode_image",
+  peekDecodedImage: "peek_decoded_image",
   sampleImage: "sample_image",
   generateThumbnail: "generate_thumbnail",
   copyImageToClipboard: "copy_image_to_clipboard",
@@ -46,11 +47,14 @@ export interface ImageEntry {
 }
 
 export interface DecodedImage {
-  dataUrl: string;
+  /** On-disk cache file path returned by the backend decode command. */
+  path: string;
   width: number;
   height: number;
   orientation: number;
 }
+
+export type DecodeImageQuality = "preview" | "display" | "enhance";
 
 export interface Thumbnail {
   url: string;
@@ -72,6 +76,7 @@ export interface ScanFolderRequest {
 
 export interface DecodeImageRequest {
   path: string;
+  quality?: DecodeImageQuality;
 }
 
 export interface GenerateThumbnailRequest {

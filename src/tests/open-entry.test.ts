@@ -75,7 +75,7 @@ describe("openPath", () => {
     });
 
     ipc.override("decode_image", async () => ({
-      dataUrl: "data:image/png;base64,slow",
+      path: "/tmp/imageareo-images/slow.jpg",
       width: 10,
       height: 10,
       orientation: 1,

@@ -2,11 +2,13 @@ import { describe, it, expect } from "vitest";
 import {
   extensionOf,
   isNativeFormat,
+  isRawFormat,
   isSupportedImage,
   supportedExtensions,
   orientationTransform,
   NATIVE_EXTENSIONS,
   NEEDS_BACKEND_EXTENSIONS,
+  RAW_EXTENSIONS,
 } from "../lib/utils/format";
 
 describe("extensionOf", () => {
@@ -58,6 +60,18 @@ describe("isSupportedImage", () => {
   });
 });
 
+describe("isRawFormat", () => {
+  it("accepts supported RAW formats", () => {
+    expect(isRawFormat("x.dng")).toBe(true);
+    expect(isRawFormat("x.CR2")).toBe(true);
+  });
+
+  it("rejects non-RAW formats", () => {
+    expect(isRawFormat("x.heic")).toBe(false);
+    expect(isRawFormat("x.png")).toBe(false);
+  });
+});
+
 describe("supportedExtensions", () => {
   it("is the union of native and backend sets", () => {
     const all = supportedExtensions();
@@ -75,6 +89,14 @@ describe("supportedExtensions", () => {
       expect(supportedExtensions()).toContain(ext);
     },
   );
+});
+
+describe("RAW_EXTENSIONS", () => {
+  it("stays within the backend-decoded extension set", () => {
+    for (const ext of RAW_EXTENSIONS) {
+      expect(NEEDS_BACKEND_EXTENSIONS.has(ext)).toBe(true);
+    }
+  });
 });
 
 describe("orientationTransform", () => {

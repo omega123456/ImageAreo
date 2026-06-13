@@ -4,13 +4,30 @@
  * Holds the current image source and the live view transform (zoom/pan/
  * rotation/fit-mode) plus load status. The zoom/pan controller mutates `zoom`
  * and `pan`; components read this store to drive the `<img>` transform and the
- * zoom HUD. Later phases (P8/P9/P11/P14) extend this module — do not rewrite it.
+ * zoom HUD.
+ *
+ * Backend-decoded images follow a preview → display → optional full lifecycle.
+ * The `decode_image` command writes a cache file to disk and returns its path;
+ * the IPC wrapper resolves that path to an asset URL via `convertFileSrc`, so
+ * the viewer renders backend images from files (no base64 on the JS heap).
+ *
+ *  - Native formats (JPEG/PNG/GIF/WebP) load directly through `convertFileSrc`.
+ *  - RAW: an instant low-res `preview` paints first (`upgrading = true`), then
+ *    the capped `display` image — the embedded preview, never a demosaic — swaps
+ *    in (`upgrading = false`, `enhanceAvailable = true`). The display is fast and
+ *    light but can be soft, so the user may then opt into an `enhance` decode (a
+ *    one-time full sensor demosaic, `enhancing` → `enhanced`) to sharpen it.
+ *  - Non-RAW backend formats load the `display` image only.
+ *
+ * Navigating/closing bumps the open request id, which cancels pending decodes,
+ * clears all enhance state, and ensures superseded results are never applied.
  */
 
 import { convertFileSrc } from "@tauri-apps/api/core";
 
-import { decodeImage } from "../ipc";
-import { isNativeFormat } from "../utils/format";
+import { decodeImage, peekDecodedImage } from "../ipc";
+import type { DecodedImageWithUrl } from "../ipc";
+import { isNativeFormat, isRawFormat } from "../utils/format";
 
 export type FitMode = "fit" | "actual" | "free";
 export type ViewerStatus = "idle" | "loading" | "ready" | "error";
@@ -24,10 +41,13 @@ export interface Pan {
 class ViewerStore {
   #openRequestId = 0;
   #pendingDecodeImage: HTMLImageElement | null = null;
+  #pendingEnhanceDecodeImage: HTMLImageElement | null = null;
 
   /** Original filesystem path of the loaded image, when present. */
   path = $state<string | null>(null);
-  /** Resolved image source (asset URL for native; data URL for backend in P9). */
+  /** Filesystem path currently used for backdrop sampling. */
+  samplePath = $state<string | null>(null);
+  /** Resolved image source (asset URL — native path or backend cache file). */
   source = $state<string>("");
   /** Human-readable name (filename) of the loaded image, for accessibility. */
   name = $state<string | null>(null);
@@ -50,6 +70,34 @@ class ViewerStore {
   fitMode = $state<FitMode>("fit");
   /** Load lifecycle status. */
   status = $state<ViewerStatus>("idle");
+  /**
+   * True while the instant RAW preview is shown but the capped `display` image
+   * (the embedded preview, no demosaic) is still being prepared in the
+   * background. The image stays visible and interactive throughout; while this
+   * is set, the Enhance control is withheld until the display is ready.
+   */
+  upgrading = $state<boolean>(false);
+  /**
+   * True when a RAW display image is ready and the user may opt into the heavier
+   * "Enhance" decode (a full sensor demosaic). Cleared while `upgrading`, on
+   * non-RAW images, and on navigate/reset.
+   */
+  enhanceAvailable = $state<boolean>(false);
+  /** True while the on-demand Enhance decode runs. */
+  enhancing = $state<boolean>(false);
+  /** True once the viewer is rendering the enhanced (demosaiced) image. */
+  enhanced = $state<boolean>(false);
+  /** Transient flag that drives the Enhance control's error state. */
+  enhanceError = $state<boolean>(false);
+
+  /** Clear all Enhance lifecycle state. */
+  #resetEnhanceState(): void {
+    this.enhanceAvailable = false;
+    this.enhancing = false;
+    this.enhanced = false;
+    this.enhanceError = false;
+    this.#cancelPendingEnhanceDecode();
+  }
 
   /** Reset the view transform and intrinsic dimensions to their defaults. */
   private resetTransform(): void {
@@ -67,7 +115,10 @@ class ViewerStore {
     this.#openRequestId += 1;
     this.#cancelPendingDecode();
     this.resetTransform();
+    this.upgrading = false;
+    this.#resetEnhanceState();
     this.source = source;
+    this.samplePath = null;
     this.name = name ?? null;
     this.status = "loading";
   }
@@ -81,16 +132,34 @@ class ViewerStore {
     this.#pendingDecodeImage = null;
   }
 
+  /** Stop any detached Enhance decode work that has not yet completed. */
+  #cancelPendingEnhanceDecode(): void {
+    if (!this.#pendingEnhanceDecodeImage) {
+      return;
+    }
+    this.#pendingEnhanceDecodeImage.src = "";
+    this.#pendingEnhanceDecodeImage = null;
+  }
+
   /**
    * Decode an image source off the main render path before swapping it into the
    * visible `<img>`, so the loading state can paint immediately.
+   *
+   * `useEnhanceSlot` selects a separate cancellation slot
+   * (`#pendingEnhanceDecodeImage`) so an Enhance decode does not clobber the
+   * background display-upgrade decode's cleanup guard (or vice versa).
    */
   async #decodeOffThread(
     source: string,
     requestId: number,
+    useEnhanceSlot: boolean = false,
   ): Promise<{ width: number; height: number }> {
     const img = new Image();
-    this.#pendingDecodeImage = img;
+    if (useEnhanceSlot) {
+      this.#pendingEnhanceDecodeImage = img;
+    } else {
+      this.#pendingDecodeImage = img;
+    }
     img.decoding = "async";
     img.src = source;
     try {
@@ -103,8 +172,99 @@ class ViewerStore {
         height: img.naturalHeight,
       };
     } finally {
-      if (this.#pendingDecodeImage === img) {
+      if (useEnhanceSlot) {
+        if (this.#pendingEnhanceDecodeImage === img) {
+          this.#pendingEnhanceDecodeImage = null;
+        }
+      } else if (this.#pendingDecodeImage === img) {
         this.#pendingDecodeImage = null;
+      }
+    }
+  }
+
+  #isCurrentRequest(requestId: number, path: string): boolean {
+    return requestId === this.#openRequestId && this.path === path;
+  }
+
+  async #applyBackendDecoded(
+    decoded: DecodedImageWithUrl,
+    requestId: number,
+    path: string,
+    resetTransform: boolean,
+    useEnhanceSlot: boolean = false,
+  ): Promise<boolean> {
+    await this.#decodeOffThread(decoded.url, requestId, useEnhanceSlot);
+    if (!this.#isCurrentRequest(requestId, path)) {
+      return false;
+    }
+
+    if (resetTransform) {
+      this.resetTransform();
+    }
+
+    this.source = decoded.url;
+    this.samplePath = decoded.path;
+    this.orientation = decoded.orientation;
+    this.naturalWidth = decoded.width;
+    this.naturalHeight = decoded.height;
+    this.status = "ready";
+    return true;
+  }
+
+  /**
+   * After an instant RAW preview, swap in the sharper image. If this RAW was
+   * already enhanced in a previous session (an enhanced cache file exists on
+   * disk), that image is preferred — so reopening a RAW shows the enhanced
+   * result rather than dropping back to the soft preview. Otherwise the capped
+   * `display` image (the embedded preview, never a demosaic) is loaded and the
+   * Enhance control is offered. On failure the preview is kept (non-fatal).
+   */
+  async #upgradeRaw(path: string, requestId: number): Promise<void> {
+    try {
+      // Prefer an already-cached enhanced image (no fresh demosaic is triggered
+      // — `peek` only looks up the disk cache).
+      const cachedEnhanced = await peekDecodedImage({ path, quality: "enhance" });
+      if (!this.#isCurrentRequest(requestId, path)) {
+        return;
+      }
+      if (cachedEnhanced) {
+        const applied = await this.#applyBackendDecoded(
+          cachedEnhanced,
+          requestId,
+          path,
+          false,
+        );
+        if (applied) {
+          this.enhanceAvailable = true;
+          this.enhanced = true;
+        }
+        return;
+      }
+
+      const decoded = await decodeImage({ path, quality: "display" });
+      if (!this.#isCurrentRequest(requestId, path)) {
+        return;
+      }
+
+      const applied = await this.#applyBackendDecoded(
+        decoded,
+        requestId,
+        path,
+        false,
+      );
+      if (applied) {
+        this.enhanceAvailable = true;
+      }
+    } catch (error) {
+      if (!this.#isCurrentRequest(requestId, path)) {
+        return;
+      }
+      // The preview is already shown, so a failed upgrade is non-fatal: keep the
+      // preview rather than dropping to the error state.
+      console.warn(`RAW display upgrade failed for ${path}`, error);
+    } finally {
+      if (this.#isCurrentRequest(requestId, path)) {
+        this.upgrading = false;
       }
     }
   }
@@ -114,9 +274,11 @@ class ViewerStore {
    *
    * Native formats (JPEG/PNG/GIF/WebP) are handed straight to the WebView via
    * `convertFileSrc` — no backend round-trip. Every other supported format is
-   * decoded by the Rust `decode_image` command, which returns a data URL plus
-   * intrinsic dimensions and EXIF orientation. On decode failure the viewer
-   * transitions to the error status.
+   * decoded by the Rust `decode_image` command, which writes a cache file and
+   * returns its path (resolved to an asset URL) plus intrinsic dimensions and
+   * EXIF orientation. RAW files paint an instant preview first, then upgrade to
+   * the capped display image. On decode failure the viewer transitions to the
+   * error status.
    */
   async openPath(path: string): Promise<void> {
     const requestId = ++this.#openRequestId;
@@ -125,36 +287,44 @@ class ViewerStore {
     this.path = path;
     this.name = name;
     this.status = "loading";
+    this.upgrading = false;
+    this.#resetEnhanceState();
 
     try {
       if (isNativeFormat(path)) {
         const source = convertFileSrc(path);
         const decoded = await this.#decodeOffThread(source, requestId);
-        if (requestId !== this.#openRequestId || this.path !== path) {
+        if (!this.#isCurrentRequest(requestId, path)) {
           return;
         }
         this.resetTransform();
         this.source = source;
+        this.samplePath = path;
         this.setReady(decoded.width, decoded.height);
         return;
       }
 
-      const decoded = await decodeImage({ path });
-      if (requestId !== this.#openRequestId || this.path !== path) {
+      if (isRawFormat(path)) {
+        const preview = await decodeImage({ path, quality: "preview" });
+        const applied = await this.#applyBackendDecoded(
+          preview,
+          requestId,
+          path,
+          true,
+        );
+        if (!applied) {
+          return;
+        }
+
+        this.upgrading = true;
+        void this.#upgradeRaw(path, requestId);
         return;
       }
 
-      await this.#decodeOffThread(decoded.dataUrl, requestId);
-      if (requestId !== this.#openRequestId || this.path !== path) {
-        return;
-      }
-
-      this.resetTransform();
-      this.source = decoded.dataUrl;
-      this.orientation = decoded.orientation;
-      this.setReady(decoded.width, decoded.height);
+      const decoded = await decodeImage({ path, quality: "display" });
+      await this.#applyBackendDecoded(decoded, requestId, path, true);
     } catch {
-      if (requestId !== this.#openRequestId || this.path !== path) {
+      if (!this.#isCurrentRequest(requestId, path)) {
         return;
       }
       this.setError();
@@ -193,12 +363,74 @@ class ViewerStore {
     this.rotateBy(90);
   }
 
+  /**
+   * Opt into the heavier "Enhance" RAW decode: a one-time full sensor demosaic,
+   * downscaled to the display cap and encoded as JPEG. Flags `enhancing` while
+   * the decode runs, then swaps `source` to the enhanced image and sets
+   * `enhanced`. A superseded request (navigation) is never applied; a failure
+   * surfaces `enhanceError` and leaves the current display image up.
+   */
+  async requestEnhance(): Promise<void> {
+    if (this.upgrading) {
+      return;
+    }
+
+    const path = this.path;
+    if (
+      path === null ||
+      !this.enhanceAvailable ||
+      this.enhancing ||
+      this.enhanced
+    ) {
+      return;
+    }
+
+    const requestId = this.#openRequestId;
+    this.enhancing = true;
+    this.enhanceError = false;
+
+    try {
+      const decoded = await decodeImage({ path, quality: "enhance" });
+      if (!this.#isCurrentRequest(requestId, path)) {
+        return;
+      }
+
+      const applied = await this.#applyBackendDecoded(
+        decoded,
+        requestId,
+        path,
+        false,
+        true,
+      );
+      if (applied) {
+        this.enhanced = true;
+      } else if (this.#isCurrentRequest(requestId, path)) {
+        // `applied === false` can mean the request was superseded by navigation;
+        // only surface an error if this is still the current image.
+        this.enhanceError = true;
+      }
+    } catch (error) {
+      if (!this.#isCurrentRequest(requestId, path)) {
+        return;
+      }
+      this.enhanceError = true;
+      console.warn(`Enhance RAW decode failed for ${path}`, error);
+    } finally {
+      if (this.#isCurrentRequest(requestId, path)) {
+        this.enhancing = false;
+      }
+    }
+  }
+
   /** Clear the viewer back to the empty state. */
   reset(): void {
     this.#openRequestId += 1;
     this.#cancelPendingDecode();
     this.resetTransform();
+    this.upgrading = false;
+    this.#resetEnhanceState();
     this.path = null;
+    this.samplePath = null;
     this.source = "";
     this.name = null;
     this.status = "idle";

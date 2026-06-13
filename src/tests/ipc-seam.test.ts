@@ -25,7 +25,7 @@ describe("IPC mock seam", () => {
 
   it("ipc.override() stubs a command and the viewer store reacts to it", async () => {
     ipc.override("decode_image", () => ({
-      dataUrl: "data:image/png;base64,OVERRIDDEN",
+      path: "/tmp/imageareo-images/overridden.jpg",
       width: 1234,
       height: 567,
       orientation: 1,
@@ -33,10 +33,10 @@ describe("IPC mock seam", () => {
 
     // Simulate the viewer flow: decode then drive the store from the response.
     const decoded = await decodeImage({ path: "/a.heic" });
-    viewer.load(decoded.dataUrl, "a.heic");
+    viewer.load(decoded.url, "a.heic");
     viewer.setReady(decoded.width, decoded.height);
 
-    expect(viewer.source).toBe("data:image/png;base64,OVERRIDDEN");
+    expect(viewer.source).toBe("asset:///tmp/imageareo-images/overridden.jpg");
     expect(viewer.naturalWidth).toBe(1234);
     expect(viewer.naturalHeight).toBe(567);
     expect(viewer.status).toBe("ready");
