@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::fmt;
 
 use serde::Serialize;
 
@@ -45,6 +46,14 @@ pub struct WindowsAssociationPaths {
     pub progid: String,
     pub progid_command_key: String,
 }
+
+impl fmt::Display for AssociationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} ({})", self.message, self.code)
+    }
+}
+
+impl std::error::Error for AssociationError {}
 
 impl AssociationError {
     pub(crate) fn invalid_extension(message: impl Into<String>) -> Self {

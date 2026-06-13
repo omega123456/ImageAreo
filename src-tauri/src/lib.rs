@@ -7,7 +7,7 @@ pub mod menu;
 pub mod startup;
 pub mod thumbnail;
 
-use startup::{LaunchPathBuffer, OPEN_PATH_EVENT};
+use startup::LaunchPathBuffer;
 
 /// Signal that the frontend has registered its event listeners and is ready to
 /// receive the initial launch path. Returns the buffered path (if any) so the
@@ -128,7 +128,7 @@ pub fn run() {
                 {
                     let buffer = app.state::<LaunchPathBuffer>();
                     if buffer.offer(path.clone()) {
-                        let _ = app.emit(OPEN_PATH_EVENT, path);
+                        let _ = app.emit(startup::OPEN_PATH_EVENT, path);
                     }
                 }
             }
