@@ -36,6 +36,13 @@ export interface Rect {
   h: number;
 }
 
+export interface ViewportRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
 /** Linear matrix (a,b,c,d) for an EXIF orientation, matching `orientationTransform`. */
 function orientationMatrix(o: number): [number, number, number, number] {
   switch (o) {
@@ -63,13 +70,40 @@ function luminance(r: number, g: number, b: number): number {
   return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
 }
 
-/** Parse a CSS `rgb()/rgba()` string into relative luminance (0..1), or null. */
+/** Parse a CSS color string into relative luminance (0..1), or null. */
 export function cssColorLuminance(color: string): number | null {
-  const m = color.match(/rgba?\(([^)]+)\)/);
-  if (!m) return null;
-  const parts = m[1].split(/[ ,/]+/).map((x) => parseFloat(x));
-  if (parts.length < 3 || parts.some((n) => Number.isNaN(n))) return null;
-  return luminance(parts[0], parts[1], parts[2]);
+  const rgb = color.match(/rgba?\(([^)]+)\)/);
+  if (rgb) {
+    const parts = rgb[1].split(/[ ,/]+/).map((x) => parseFloat(x));
+    if (parts.length < 3 || parts.some((n) => Number.isNaN(n))) return null;
+    return luminance(parts[0], parts[1], parts[2]);
+  }
+
+  const oklch = color.match(/oklch\(([^)]+)\)/);
+  if (!oklch) return null;
+
+  const parts = oklch[1].split(/[ ,/]+/);
+  if (parts.length < 3) return null;
+  const lightness = parts[0].endsWith("%")
+    ? parseFloat(parts[0]) / 100
+    : parseFloat(parts[0]);
+  return Number.isNaN(lightness) ? null : Math.max(0, Math.min(1, lightness));
+}
+
+/** Convert a viewport-space rect to container-local coordinates and clamp it. */
+export function rectWithinContainer(
+  bounds: ViewportRect | null,
+  containerRect: ViewportRect,
+): Rect | null {
+  if (!bounds) return null;
+
+  const x = Math.max(0, bounds.left - containerRect.left);
+  const y = Math.max(0, bounds.top - containerRect.top);
+  const right = Math.min(containerRect.width, bounds.left - containerRect.left + bounds.width);
+  const bottom = Math.min(containerRect.height, bounds.top - containerRect.top + bounds.height);
+  const w = right - x;
+  const h = bottom - y;
+  return w > 0 && h > 0 ? { x, y, w, h } : null;
 }
 
 /**

@@ -87,11 +87,11 @@
   /* Soft legibility shadow under chrome glyphs for busy backdrops. */
   --drop-shadow-glyph: 0 1px 2px oklch(0 0 0 / 0.45);
 
-  /* Selected/active toolbar chip fill, also chosen from the sampled backdrop:
-     a light translucent chip over dark content, a dark translucent chip over
-     light content (so the active glyph keeps its contrast). Used by name as
-     `bg-chrome-active-on-dark` / `bg-chrome-active-on-light`. */
-  --color-chrome-active-on-dark: oklch(1 0 0 / 0.22);
+  /* Hover/active toolbar chip fills, chosen from the sampled backdrop so the
+     fill remains visible without swallowing the glyph color. */
+  --color-chrome-hover-on-dark: oklch(0 0 0 / 0.26);
+  --color-chrome-hover-on-light: oklch(0.2 0.01 250 / 0.12);
+  --color-chrome-active-on-dark: oklch(0 0 0 / 0.32);
   --color-chrome-active-on-light: oklch(0.2 0.01 250 / 0.16);
 
   /* Zoom HUD pill — translucent (alpha baked in). */

@@ -4,6 +4,7 @@
   import { orientationTransform } from "../utils/format";
   import {
     cssColorLuminance,
+    rectWithinContainer,
     sampleRegionLuminance,
   } from "../utils/backdrop-tone";
   import { openPath } from "../utils/open-entry";
@@ -24,6 +25,8 @@
     bottomInset?: number;
     /** Viewport rect of the enhance control, sampled independently from the toolbar. */
     enhanceBounds?: DOMRect | null;
+    /** Viewport rect of the floating toolbar, sampled at its actual position. */
+    toolbarBounds?: DOMRect | null;
   }
 
   let {
@@ -32,6 +35,7 @@
     fullscreen = false,
     bottomInset = 0,
     enhanceBounds = null,
+    toolbarBounds = null,
   }: Props = $props();
 
   let container = $state<HTMLDivElement | null>(null);
@@ -44,6 +48,11 @@
   // read, so we never sample the displayed <img> directly.
   let samplerImg: HTMLImageElement | null = null;
   let samplerReady = $state(false);
+  let sampleLayoutVersion = $state(0);
+
+  function bumpChromeSampleVersion(): void {
+    sampleLayoutVersion += 1;
+  }
 
   function sampleTone(rectInContainer: { x: number; y: number; w: number; h: number }): number | null {
     if (!container || !samplerReady || !samplerImg) return null;
@@ -68,19 +77,6 @@
     );
   }
 
-  function clampRectToContainer(
-    rect: { x: number; y: number; w: number; h: number },
-    containerRect: DOMRect,
-  ): { x: number; y: number; w: number; h: number } | null {
-    const x = Math.max(0, rect.x);
-    const y = Math.max(0, rect.y);
-    const right = Math.min(containerRect.width, rect.x + rect.w);
-    const bottom = Math.min(containerRect.height, rect.y + rect.h);
-    const w = right - x;
-    const h = bottom - y;
-    return w > 0 && h > 0 ? { x, y, w, h } : null;
-  }
-
   /**
    * Sample the image brightness behind the floating toolbar and enhance control,
    * independently, so each glass surface adapts to the pixels directly under it.
@@ -96,29 +92,28 @@
     const surroundLum = cssColorLuminance(surround);
 
     if (viewer.status === "ready" && samplerReady && samplerImg) {
-      const toolbarBand = {
-        x: containerRect.width * 0.12,
-        y: 4,
-        w: containerRect.width * 0.76,
-        h: Math.min(64, containerRect.height),
-      };
-      const toolbarLum = sampleTone(toolbarBand);
-      if (toolbarLum !== null) {
-        chromeTone.toolbarDark = toolbarLum < 0.55;
+      const toolbarBand =
+        toolbarBounds
+          ? rectWithinContainer(toolbarBounds, containerRect)
+          : {
+              x: containerRect.width * 0.12,
+              y: 4,
+              w: containerRect.width * 0.76,
+              h: Math.min(64, containerRect.height),
+            };
+      if (toolbarBand) {
+        const toolbarLum = sampleTone(toolbarBand);
+        if (toolbarLum !== null) {
+          chromeTone.toolbarDark = toolbarLum < 0.55;
+        } else if (surroundLum !== null) {
+          chromeTone.toolbarDark = surroundLum < 0.55;
+        }
       } else if (surroundLum !== null) {
         chromeTone.toolbarDark = surroundLum < 0.55;
       }
 
       if (enhanceBounds) {
-        const enhanceRect = clampRectToContainer(
-          {
-            x: enhanceBounds.left - containerRect.left,
-            y: enhanceBounds.top - containerRect.top,
-            w: enhanceBounds.width,
-            h: enhanceBounds.height,
-          },
-          containerRect,
-        );
+        const enhanceRect = rectWithinContainer(enhanceBounds, containerRect);
         if (enhanceRect) {
           const enhanceLum = sampleTone(enhanceRect);
           if (enhanceLum !== null) {
@@ -182,6 +177,18 @@
     };
   });
 
+  // The first image can finish loading before the canvas/filmstrip layout has
+  // fully settled. Re-sample when the container geometry changes so the
+  // floating toolbar picks up the correct backdrop on first open as well.
+  $effect(() => {
+    if (typeof ResizeObserver === "undefined" || !container) return;
+    const observer = new ResizeObserver(() => {
+      sampleLayoutVersion += 1;
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  });
+
   // Keep the controller's fit inset in sync with the filmstrip height so a
   // fitted image re-centers above the strip as it appears/resizes.
   $effect(() => {
@@ -206,10 +213,12 @@
           if (cancelled) return;
           samplerImg = img;
           samplerReady = true;
+          bumpChromeSampleVersion();
         };
         img.src = dataUrl;
       })
       .catch(() => {
+        sampleChromeTone();
         /* sampling unavailable — toolbar falls back to the surround tone */
       });
 
@@ -230,6 +239,11 @@
       viewer.orientation,
       fullscreen,
       samplerReady,
+      sampleLayoutVersion,
+      toolbarBounds?.left,
+      toolbarBounds?.top,
+      toolbarBounds?.width,
+      toolbarBounds?.height,
       enhanceBounds?.left,
       enhanceBounds?.top,
       enhanceBounds?.width,
@@ -247,7 +261,12 @@
     lastReadyName = viewer.name;
     // Defer the fit to the next frame so layout has settled — a cached/
     // synchronous decode can fire `load` before the container has a real size.
-    requestAnimationFrame(() => controller?.fitToScreen());
+    requestAnimationFrame(() => {
+      controller?.fitToScreen();
+      // Even when fit resolves to the current zoom (for example 1:1 images),
+      // force one more chrome sample from the final painted state.
+      bumpChromeSampleVersion();
+    });
   }
 
   function onImageError(): void {

@@ -2,10 +2,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/svelte";
 import Toolbar from "../lib/components/Toolbar.svelte";
 import { folder } from "../lib/stores/folder.svelte";
+import { chromeTone } from "../lib/stores/chrome-tone.svelte";
 
 describe("Toolbar", () => {
   beforeEach(() => {
     folder.reset();
+    chromeTone.toolbarDark = true;
+    chromeTone.enhanceDark = true;
   });
 
   it("renders all action buttons with accessible labels", () => {
@@ -34,6 +37,28 @@ describe("Toolbar", () => {
     expect(header).toHaveClass("backdrop-blur-xl");
     expect(header).toHaveClass("backdrop-saturate-150");
     expect(header).toHaveClass("ring-glass-highlight");
+  });
+
+  it("uses sampled-tone hover and active fills over dark backdrops", () => {
+    chromeTone.toolbarDark = true;
+    render(Toolbar, { props: { galleryVisible: true } });
+
+    const openButton = screen.getByRole("button", { name: "Open image" });
+    const galleryButton = screen.getByRole("button", { name: "Toggle filmstrip" });
+    expect(openButton).toHaveClass("hover:bg-chrome-hover-on-dark");
+    expect(openButton).not.toHaveClass("hover:preset-tonal-surface");
+    expect(galleryButton).toHaveClass("bg-chrome-active-on-dark");
+  });
+
+  it("uses sampled-tone hover and active fills over light backdrops", () => {
+    chromeTone.toolbarDark = false;
+    render(Toolbar, { props: { galleryVisible: true } });
+
+    const openButton = screen.getByRole("button", { name: "Open image" });
+    const galleryButton = screen.getByRole("button", { name: "Toggle filmstrip" });
+    expect(openButton).toHaveClass("hover:bg-chrome-hover-on-light");
+    expect(openButton).not.toHaveClass("hover:preset-tonal-surface");
+    expect(galleryButton).toHaveClass("bg-chrome-active-on-light");
   });
 
   it("wires each button to its callback", async () => {

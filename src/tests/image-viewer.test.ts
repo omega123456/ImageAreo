@@ -1,17 +1,27 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/svelte";
 import ImageViewer from "../lib/components/ImageViewer.svelte";
 import { viewer } from "../lib/stores/viewer.svelte";
+import { chromeTone } from "../lib/stores/chrome-tone.svelte";
+import { ipc } from "./ipc-mock";
 
 describe("ImageViewer", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
     viewer.reset();
+    chromeTone.toolbarDark = true;
+    chromeTone.enhanceDark = true;
     // jsdom does not run rAF naturally; make it synchronous for fit-on-load.
     vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((cb) => {
       cb(0);
       return 0;
     });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   it("renders the empty state when idle", () => {
@@ -122,4 +132,82 @@ describe("ImageViewer", () => {
     expect(document.querySelector(".bg-canvas-surround")).not.toBeNull();
     unmount();
   });
+
+  it("re-samples the toolbar tone when the first-open layout settles after mount", async () => {
+    const resizeCallbacks: ResizeObserverCallback[] = [];
+    class MockResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallbacks.push(callback);
+      }
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+    }
+    vi.stubGlobal("ResizeObserver", MockResizeObserver as unknown as typeof ResizeObserver);
+    const timeoutSpy = vi.spyOn(window, "setTimeout");
+
+    viewer.load("asset://photo.jpg", "photo.jpg");
+    viewer.path = "/photos/photo.jpg";
+    viewer.setReady(800, 600);
+
+    render(ImageViewer);
+    const callsAfterMount = timeoutSpy.mock.calls.length;
+    expect(callsAfterMount).toBeGreaterThan(0);
+    expect(resizeCallbacks.length).toBeGreaterThan(1);
+
+    timeoutSpy.mockClear();
+    for (const callback of resizeCallbacks) {
+      callback([], {} as ResizeObserver);
+    }
+
+    await Promise.resolve();
+    expect(timeoutSpy).toHaveBeenCalledWith(expect.any(Function), 80);
+  });
+
+  it("re-samples after the visible image load settles even when fit keeps the same zoom", async () => {
+    const timeoutSpy = vi.spyOn(window, "setTimeout");
+
+    viewer.load("asset://photo.jpg", "photo.jpg");
+    viewer.path = "/photos/photo.jpg";
+    viewer.samplePath = "/photos/photo.jpg";
+    viewer.setReady(800, 600);
+
+    render(ImageViewer);
+    const scheduledBeforeLoad = timeoutSpy.mock.calls.length;
+    const img = screen.getByRole("img", { name: "photo.jpg" }) as HTMLImageElement;
+    Object.defineProperty(img, "naturalWidth", { value: 800, configurable: true });
+    Object.defineProperty(img, "naturalHeight", { value: 600, configurable: true });
+
+    await fireEvent.load(img);
+
+    expect(timeoutSpy.mock.calls.length).toBeGreaterThan(scheduledBeforeLoad);
+    expect(timeoutSpy).toHaveBeenLastCalledWith(expect.any(Function), 80);
+  });
+
+  it("does not restart sample fetching when the sampler image becomes ready", async () => {
+    class MockImage {
+      decoding = "async";
+      onload: (() => void) | null = null;
+      set src(_value: string) {
+        this.onload?.();
+      }
+    }
+    vi.stubGlobal("Image", MockImage as unknown as typeof Image);
+
+    viewer.load("asset://photo.jpg", "photo.jpg");
+    viewer.path = "/photos/photo.jpg";
+    viewer.samplePath = "/photos/photo.jpg";
+    viewer.setReady(800, 600);
+
+    render(ImageViewer);
+
+    await waitFor(() => {
+      expect(ipc.calls("sample_image")).toHaveLength(1);
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(ipc.calls("sample_image")).toHaveLength(1);
+  });
+
 });

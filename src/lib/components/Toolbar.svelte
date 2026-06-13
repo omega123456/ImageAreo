@@ -63,6 +63,11 @@
       ? "text-chrome-glyph-on-dark drop-shadow-glyph"
       : "text-chrome-glyph-on-light",
   );
+  const buttonClass = $derived(
+    chromeTone.toolbarDark
+      ? "btn-icon hover:bg-chrome-hover-on-dark"
+      : "btn-icon hover:bg-chrome-hover-on-light",
+  );
 
   // Selected-toggle chip fill, adapted to the same sampled tone.
   const activeChipClass = $derived(
@@ -76,7 +81,7 @@
   <!-- File group -->
   <button
     type="button"
-    class="btn-icon hover:preset-tonal-surface"
+    class={buttonClass}
     aria-label="Open image"
     title="Open image"
     onclick={onOpen}
@@ -86,7 +91,7 @@
 
   <button
     type="button"
-    class="btn-icon hover:preset-tonal-surface"
+    class={buttonClass}
     aria-label="Open folder"
     title="Open folder"
     onclick={onOpenFolder}
@@ -99,7 +104,7 @@
   <!-- View group -->
   <button
     type="button"
-    class="btn-icon hover:preset-tonal-surface"
+    class={buttonClass}
     aria-label="Fit to screen"
     title="Fit to screen (F)"
     onclick={onFit}
@@ -109,7 +114,7 @@
 
   <button
     type="button"
-    class="btn-icon hover:preset-tonal-surface"
+    class={buttonClass}
     aria-label="Actual size"
     title="Actual size (1)"
     onclick={onActualSize}
@@ -119,7 +124,7 @@
 
   <button
     type="button"
-    class="btn-icon hover:preset-tonal-surface"
+    class={buttonClass}
     aria-label="Zoom in"
     title="Zoom in (+)"
     onclick={onZoomIn}
@@ -129,7 +134,7 @@
 
   <button
     type="button"
-    class="btn-icon hover:preset-tonal-surface"
+    class={buttonClass}
     aria-label="Zoom out"
     title="Zoom out (−)"
     onclick={onZoomOut}
@@ -139,7 +144,7 @@
 
   <button
     type="button"
-    class="btn-icon hover:preset-tonal-surface {fullscreen ? activeChipClass : ''}"
+    class="{buttonClass} {fullscreen ? activeChipClass : ''}"
     aria-label="Toggle fullscreen"
     aria-pressed={fullscreen}
     title="Toggle fullscreen (F11)"
@@ -153,7 +158,7 @@
   <!-- Rotate group -->
   <button
     type="button"
-    class="btn-icon hover:preset-tonal-surface"
+    class={buttonClass}
     aria-label="Rotate left"
     title="Rotate left (Ctrl+[)"
     onclick={onRotateLeft}
@@ -163,7 +168,7 @@
 
   <button
     type="button"
-    class="btn-icon hover:preset-tonal-surface"
+    class={buttonClass}
     aria-label="Rotate right"
     title="Rotate right (Ctrl+])"
     onclick={onRotateRight}
@@ -176,7 +181,7 @@
   <!-- Filmstrip + settings group -->
   <button
     type="button"
-    class="btn-icon hover:preset-tonal-surface {galleryVisible ? activeChipClass : ''}"
+    class="{buttonClass} {galleryVisible ? activeChipClass : ''}"
     aria-label="Toggle filmstrip"
     aria-pressed={galleryVisible}
     title="Toggle filmstrip"
@@ -193,7 +198,7 @@
   <div class="relative">
     <button
       type="button"
-      class="btn-icon hover:preset-tonal-surface"
+      class={buttonClass}
       aria-label="Settings"
       title="Settings"
       onclick={onSettings}

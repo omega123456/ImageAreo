@@ -29,6 +29,8 @@
   let controller = $state<ZoomPanController | null>(null);
   let imageViewer = $state<ImageViewer | null>(null);
   let enhanceBounds = $state<DOMRect | null>(null);
+  let toolbarHost = $state<HTMLDivElement | null>(null);
+  let toolbarBounds = $state<DOMRect | null>(null);
 
   /** Measured filmstrip height; reserved by "fit" so fitted images stay above
    *  the strip while zoomed images render behind its translucent glass. Only
@@ -52,6 +54,19 @@
 
   $effect(() => {
     if (!showEnhanceControl) enhanceBounds = null;
+  });
+
+  $effect(() => {
+    if (typeof ResizeObserver === "undefined" || !toolbarHost) return;
+
+    const updateBounds = () => {
+      toolbarBounds = toolbarHost?.getBoundingClientRect() ?? null;
+    };
+
+    updateBounds();
+    const observer = new ResizeObserver(() => updateBounds());
+    observer.observe(toolbarHost);
+    return () => observer.disconnect();
   });
 
   const chromeVisibilityClass = $derived(
@@ -223,6 +238,7 @@
       fullscreen={ui.fullscreen}
       bottomInset={fitBottomInset}
       enhanceBounds={enhanceBounds}
+      toolbarBounds={toolbarBounds}
     />
 
     {#if viewer.status !== "idle"}
@@ -230,7 +246,7 @@
         class={`pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center px-3 ${toolbarChromeClass}`}
         data-testid="toolbar-overlay"
       >
-        <div class="pointer-events-auto">
+        <div bind:this={toolbarHost} class="pointer-events-auto">
           <Toolbar
             onOpen={handleOpen}
             onOpenFolder={handleOpenFolder}
