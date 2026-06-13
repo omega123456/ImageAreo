@@ -1,24 +1,15 @@
 use std::env;
 
-use windows::core::HSTRING;
-use windows::Win32::Foundation::RPC_E_CHANGED_MODE;
-use windows::Win32::System::Com::{
-    CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER,
-    COINIT_APARTMENTTHREADED,
-};
-use windows::Win32::UI::Shell::{
-    ApplicationAssociationRegistrationUI, IApplicationAssociationRegistrationUI,
-};
+use windows::Win32::UI::Shell::{SHChangeNotify, SHCNE_ASSOCCHANGED, SHCNF_IDLIST};
 use winreg::enums::HKEY_CURRENT_USER;
 use winreg::RegKey;
 
 use super::{
-    progid_for, registry_key_paths, validate_extensions, AssociationError, ExtAssociation,
+    progid_for, registry_key_paths, validate_extensions,
+    windows_default_apps_uri_for_registered_user_app, AssociationError, ExtAssociation,
     ASSOCIABLE_EXTENSIONS, WINDOWS_APPLICATION_NAME, WINDOWS_CAPABILITIES_PATH,
-    WINDOWS_CLASSES_PATH, WINDOWS_REGISTERED_APPLICATIONS_PATH,
+    WINDOWS_CLASSES_PATH, WINDOWS_DEFAULT_APPS_URI, WINDOWS_REGISTERED_APPLICATIONS_PATH,
 };
-
-const DEFAULT_APPS_URL: &str = "ms-settings:defaultapps";
 
 pub fn query_file_associations() -> Result<Vec<ExtAssociation>, AssociationError> {
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
@@ -44,72 +35,32 @@ pub fn query_file_associations() -> Result<Vec<ExtAssociation>, AssociationError
 pub fn set_default_associations(exts: &[String]) -> Result<(), AssociationError> {
     let validated = validate_extensions(exts.iter())?;
     register_file_associations(&validated)?;
-    launch_association_ui().or_else(|association_error| {
-        tauri_plugin_opener::open_url(DEFAULT_APPS_URL, None::<&str>).map_err(|err| {
+    notify_association_change();
+    launch_registered_app_defaults().or_else(|app_settings_error| {
+        tauri_plugin_opener::open_url(WINDOWS_DEFAULT_APPS_URI, None::<&str>).map_err(|err| {
             AssociationError::register(format!(
-                "failed to open ImageAreo's association chooser ({association_error}); \
-                 fallback to Windows Default Apps settings ({DEFAULT_APPS_URL}) also failed: {err}"
+                "failed to open ImageAreo's Default Apps page ({app_settings_error}); \
+                 fallback to Windows Default Apps settings ({WINDOWS_DEFAULT_APPS_URI}) also failed: {err}"
             ))
         })
     })?;
     Ok(())
 }
 
-struct ComApartment {
-    should_uninitialize: bool,
-}
-
-impl ComApartment {
-    fn initialize() -> Result<Self, AssociationError> {
-        let hr = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
-        if hr.is_ok() {
-            return Ok(Self {
-                should_uninitialize: true,
-            });
-        }
-
-        if hr == RPC_E_CHANGED_MODE {
-            return Ok(Self {
-                should_uninitialize: false,
-            });
-        }
-
-        Err(AssociationError::register(format!(
-            "failed to initialize COM for the Windows association chooser: {hr}"
-        )))
-    }
-}
-
-impl Drop for ComApartment {
-    fn drop(&mut self) {
-        if self.should_uninitialize {
-            unsafe { CoUninitialize() };
-        }
-    }
-}
-
-fn launch_association_ui() -> Result<(), AssociationError> {
-    let _apartment = ComApartment::initialize()?;
-    let association_ui: IApplicationAssociationRegistrationUI = unsafe {
-        CoCreateInstance(
-            &ApplicationAssociationRegistrationUI,
-            None,
-            CLSCTX_INPROC_SERVER,
-        )
-    }
-    .map_err(|err| {
+fn launch_registered_app_defaults() -> Result<(), AssociationError> {
+    let uri = windows_default_apps_uri_for_registered_user_app(WINDOWS_APPLICATION_NAME);
+    tauri_plugin_opener::open_url(&uri, None::<&str>).map_err(|err| {
         AssociationError::register(format!(
-            "failed to create the Windows association chooser: {err}"
-        ))
-    })?;
-    let application_name = HSTRING::from(WINDOWS_APPLICATION_NAME);
-
-    unsafe { association_ui.LaunchAdvancedAssociationUI(&application_name) }.map_err(|err| {
-        AssociationError::register(format!(
-            "failed to open the Windows association chooser for {}: {err}",
+            "failed to open Windows Default Apps settings for {}: {err}",
             WINDOWS_APPLICATION_NAME
         ))
     })
+}
+
+fn notify_association_change() {
+    unsafe {
+        SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, None, None);
+    }
 }
 
 fn register_file_associations(exts: &[String]) -> Result<(), AssociationError> {

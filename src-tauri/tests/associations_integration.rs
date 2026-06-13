@@ -1,6 +1,6 @@
 use imageareo_lib::associations::{
     self, __test_support as association_private, progid_for, registry_key_paths, uti_for,
-    validate_extensions, ASSOCIABLE_EXTENSIONS,
+    validate_extensions, windows_default_apps_uri_for_registered_user_app, ASSOCIABLE_EXTENSIONS,
 };
 use imageareo_lib::commands::associations_runtime::{
     query_file_associations as query_file_associations_command, set_default_associations,
@@ -70,6 +70,18 @@ fn windows_registry_helpers_build_expected_values() {
     assert_eq!(
         paths.progid_command_key,
         r"Software\Classes\ImageAreo.AssocFile.PNG\shell\open\command"
+    );
+}
+
+#[test]
+fn windows_default_apps_uri_targets_the_registered_user_app() {
+    assert_eq!(
+        windows_default_apps_uri_for_registered_user_app("ImageAreo"),
+        "ms-settings:defaultapps?registeredAppUser=ImageAreo"
+    );
+    assert_eq!(
+        windows_default_apps_uri_for_registered_user_app("Image Areo+Viewer"),
+        "ms-settings:defaultapps?registeredAppUser=Image%20Areo%2BViewer"
     );
 }
 

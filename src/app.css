@@ -25,15 +25,26 @@
     --theme-cerberus: true;
     color-scheme: light dark;
   }
+
+  :root[data-appearance="light"] {
+    --lightningcss-light: initial;
+    --lightningcss-dark: ;
+    color-scheme: light;
+  }
+
+  :root[data-appearance="dark"] {
+    --lightningcss-light: ;
+    --lightningcss-dark: initial;
+    color-scheme: dark;
+  }
 }
 
 /*
   Canvas-surround theme tokens (Styling Rule 3).
   A single dual-tone named token resolves to a dark achromatic neutral in dark
-  mode and pure white in light mode. The
-  `light-dark()` function keys off the CSS `color-scheme` property — declared as
-  `color-scheme: light dark` on `:root` above — so the token follows the OS
-  appearance (not Tailwind's `dark` variant directly).
+  mode and pure white in light mode. The settings store writes
+  `data-appearance`, and the base rules above keep both native `light-dark()`
+  and production-transformed tokens aligned with it.
   Used by name as `bg-canvas-surround` / `text-canvas-surround` — never bracket hex.
 */
 /*
@@ -55,12 +66,11 @@
 
   /*
     Redesign chrome surface tokens (Styling Rules 1–3).
-    Each is a single dual-tone named token resolving via `light-dark()` (keyed
-    off `color-scheme: light dark` on `:root`). Translucent surfaces bake their
-    alpha directly into the oklch value (the trailing `/ <alpha>`), so components
-    use `bg-<token> backdrop-blur-*` with NO opacity modifiers and NO bracket
-    values. Accent `primary-*` is intentionally NOT redefined here — it stays
-    reserved for selection/CTA.
+    Each is a single dual-tone named token resolving via `light-dark()`.
+    Translucent surfaces bake their alpha directly into the oklch value (the
+    trailing `/ <alpha>`), so components use `bg-<token> backdrop-blur-*` with
+    NO opacity modifiers and NO bracket values. Accent `primary-*` is
+    intentionally NOT redefined here — it stays reserved for selection/CTA.
   */
 
   /* Floating toolbar — translucent (alpha baked in), sits over the image.

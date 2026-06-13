@@ -8,7 +8,7 @@ if (!target) {
   throw new Error("Mount target #app not found");
 }
 
+await settings.initialize();
 const app = mount(App, { target });
-void settings.initialize();
 
 export default app;

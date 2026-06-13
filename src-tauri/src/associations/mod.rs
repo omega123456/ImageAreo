@@ -12,6 +12,7 @@ mod windows;
 
 pub const BUNDLE_ID: &str = "app.imageareo.viewer";
 pub const WINDOWS_APPLICATION_NAME: &str = "ImageAreo";
+pub const WINDOWS_DEFAULT_APPS_URI: &str = "ms-settings:defaultapps";
 pub const WINDOWS_CAPABILITIES_PATH: &str = r"Software\ImageAreo\Capabilities";
 pub const WINDOWS_REGISTERED_APPLICATIONS_PATH: &str = r"Software\RegisteredApplications";
 pub const WINDOWS_CLASSES_PATH: &str = r"Software\Classes";
@@ -155,6 +156,29 @@ pub fn registry_key_paths(ext: &str) -> WindowsAssociationPaths {
         progid,
         progid_command_key,
     }
+}
+
+pub fn windows_default_apps_uri_for_registered_user_app(app_name: &str) -> String {
+    format!(
+        "{}?registeredAppUser={}",
+        WINDOWS_DEFAULT_APPS_URI,
+        uri_escape_component(app_name)
+    )
+}
+
+fn uri_escape_component(value: &str) -> String {
+    let mut escaped = String::new();
+
+    for byte in value.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                escaped.push(byte as char);
+            }
+            _ => escaped.push_str(&format!("%{byte:02X}")),
+        }
+    }
+
+    escaped
 }
 
 pub fn uti_for(ext: &str) -> Option<&'static str> {
