@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::fmt;
+use std::path::Path;
 
 use serde::Serialize;
 
@@ -164,6 +165,18 @@ pub fn windows_default_apps_uri_for_registered_user_app(app_name: &str) -> Strin
         WINDOWS_DEFAULT_APPS_URI,
         uri_escape_component(app_name)
     )
+}
+
+pub fn windows_executable_paths_match(left: &Path, right: &Path) -> bool {
+    normalized_windows_executable_path(left) == normalized_windows_executable_path(right)
+}
+
+fn normalized_windows_executable_path(path: &Path) -> String {
+    path.to_string_lossy()
+        .trim()
+        .trim_matches('"')
+        .replace('\\', "/")
+        .to_ascii_lowercase()
 }
 
 fn uri_escape_component(value: &str) -> String {

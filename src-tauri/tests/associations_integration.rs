@@ -1,6 +1,7 @@
 use imageareo_lib::associations::{
     self, __test_support as association_private, progid_for, registry_key_paths, uti_for,
-    validate_extensions, windows_default_apps_uri_for_registered_user_app, ASSOCIABLE_EXTENSIONS,
+    validate_extensions, windows_default_apps_uri_for_registered_user_app,
+    windows_executable_paths_match, ASSOCIABLE_EXTENSIONS,
 };
 use imageareo_lib::commands::associations_runtime::{
     query_file_associations as query_file_associations_command, set_default_associations,
@@ -83,6 +84,22 @@ fn windows_default_apps_uri_targets_the_registered_user_app() {
         windows_default_apps_uri_for_registered_user_app("Image Areo+Viewer"),
         "ms-settings:defaultapps?registeredAppUser=Image%20Areo%2BViewer"
     );
+}
+
+#[test]
+fn windows_executable_path_matching_is_case_and_separator_insensitive() {
+    assert!(windows_executable_paths_match(
+        std::path::Path::new(r"C:\Program Files\ImageAreo\ImageAreo.exe"),
+        std::path::Path::new("c:/program files/imageareo/imageareo.exe"),
+    ));
+    assert!(windows_executable_paths_match(
+        std::path::Path::new(r#""C:\Program Files\ImageAreo\ImageAreo.exe""#),
+        std::path::Path::new(r"C:\Program Files\ImageAreo\ImageAreo.exe"),
+    ));
+    assert!(!windows_executable_paths_match(
+        std::path::Path::new(r"C:\Program Files\ImageAreo\ImageAreo.exe"),
+        std::path::Path::new(r"C:\Windows\System32\mspaint.exe"),
+    ));
 }
 
 #[test]

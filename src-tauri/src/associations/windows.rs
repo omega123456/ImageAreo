@@ -1,27 +1,31 @@
 use std::env;
+use std::path::{Path, PathBuf};
 
+use windows::core::{HSTRING, PCWSTR, PWSTR};
+use windows::Win32::UI::Shell::{
+    AssocQueryStringW, ASSOCF_INIT_IGNOREUNKNOWN, ASSOCSTR_EXECUTABLE,
+};
 use windows::Win32::UI::Shell::{SHChangeNotify, SHCNE_ASSOCCHANGED, SHCNF_IDLIST};
 use winreg::enums::HKEY_CURRENT_USER;
 use winreg::RegKey;
 
 use super::{
     progid_for, registry_key_paths, validate_extensions,
-    windows_default_apps_uri_for_registered_user_app, AssociationError, ExtAssociation,
-    ASSOCIABLE_EXTENSIONS, WINDOWS_APPLICATION_NAME, WINDOWS_CAPABILITIES_PATH,
-    WINDOWS_CLASSES_PATH, WINDOWS_DEFAULT_APPS_URI, WINDOWS_REGISTERED_APPLICATIONS_PATH,
+    windows_default_apps_uri_for_registered_user_app, windows_executable_paths_match,
+    AssociationError, ExtAssociation, ASSOCIABLE_EXTENSIONS, WINDOWS_APPLICATION_NAME,
+    WINDOWS_CAPABILITIES_PATH, WINDOWS_CLASSES_PATH, WINDOWS_DEFAULT_APPS_URI,
+    WINDOWS_REGISTERED_APPLICATIONS_PATH,
 };
 
 pub fn query_file_associations() -> Result<Vec<ExtAssociation>, AssociationError> {
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let exe_path = env::current_exe().map_err(|err| {
+        AssociationError::query(format!("failed to resolve current executable: {err}"))
+    })?;
     let mut associations = Vec::with_capacity(ASSOCIABLE_EXTENSIONS.len());
 
     for ext in ASSOCIABLE_EXTENSIONS {
-        let paths = registry_key_paths(ext);
-        let is_default = hkcu
-            .open_subkey(&paths.user_choice_key)
-            .ok()
-            .and_then(|key| key.get_value::<String, _>("ProgId").ok())
-            .is_some_and(|progid| progid == paths.progid);
+        let is_default = is_default_for_extension(&hkcu, ext, &exe_path);
 
         associations.push(ExtAssociation {
             ext: (*ext).to_string(),
@@ -30,6 +34,57 @@ pub fn query_file_associations() -> Result<Vec<ExtAssociation>, AssociationError
     }
 
     Ok(associations)
+}
+
+fn is_default_for_extension(hkcu: &RegKey, ext: &str, exe_path: &Path) -> bool {
+    let paths = registry_key_paths(ext);
+    let user_choice_matches = hkcu
+        .open_subkey(&paths.user_choice_key)
+        .ok()
+        .and_then(|key| key.get_value::<String, _>("ProgId").ok())
+        .is_some_and(|progid| progid == paths.progid);
+    if user_choice_matches {
+        return true;
+    }
+
+    effective_default_executable(ext)
+        .as_deref()
+        .is_some_and(|default_exe| executable_paths_match(default_exe, exe_path))
+}
+
+fn effective_default_executable(ext: &str) -> Option<PathBuf> {
+    let assoc = HSTRING::from(format!(".{ext}"));
+    let mut buffer = vec![0u16; 32_768];
+    let mut len = buffer.len() as u32;
+    let result = unsafe {
+        AssocQueryStringW(
+            ASSOCF_INIT_IGNOREUNKNOWN,
+            ASSOCSTR_EXECUTABLE,
+            &assoc,
+            PCWSTR::null(),
+            Some(PWSTR(buffer.as_mut_ptr())),
+            &mut len,
+        )
+    };
+    if !result.is_ok() {
+        return None;
+    }
+
+    let end = buffer
+        .iter()
+        .position(|unit| *unit == 0)
+        .unwrap_or(buffer.len());
+    if end == 0 {
+        return None;
+    }
+
+    Some(PathBuf::from(String::from_utf16_lossy(&buffer[..end])))
+}
+
+fn executable_paths_match(left: &Path, right: &Path) -> bool {
+    let left = left.canonicalize().unwrap_or_else(|_| left.to_path_buf());
+    let right = right.canonicalize().unwrap_or_else(|_| right.to_path_buf());
+    windows_executable_paths_match(&left, &right)
 }
 
 pub fn set_default_associations(exts: &[String]) -> Result<(), AssociationError> {
