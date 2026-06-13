@@ -648,7 +648,7 @@ fn alpha_typed_source_resizes_via_the_rgba_path() {
     // resize, preserving the alpha channel for the post-resize transparency scan.
     use image::__test_support::{downscale_owned_to_cap_for, downscale_to_cap_for};
     let large =
-        DynamicImage::ImageRgba8(RgbaImage::from_pixel(4000, 2000, Rgba([9, 9, 9, 128])));
+        DynamicImage::ImageRgba8(RgbaImage::from_pixel(2000, 1000, Rgba([9, 9, 9, 128])));
 
     let borrowed = downscale_to_cap_for(&large, 1000).expect("borrowed rgba downscale");
     assert!(matches!(borrowed, DynamicImage::ImageRgba8(_)));
@@ -997,7 +997,7 @@ fn viewport_decode_produces_a_smaller_derivative_keyed_distinctly() {
     // variant — distinct from the full 8192 Display tier of the same source.
     let dir = TempImageDir::new();
     let path = dir.path().join("large.tiff");
-    write_dynamic_image(&path, &fixture_image(6000, 4000), ImageFormat::Tiff);
+    write_dynamic_image(&path, &fixture_image(2400, 1600), ImageFormat::Tiff);
 
     let hint = ViewportHint {
         long_edge_px: 1000.0,
@@ -1031,7 +1031,7 @@ fn viewport_and_display_tiers_coexist_without_clobbering() {
     // two distinct cache files on disk.
     let dir = TempImageDir::new();
     let path = dir.path().join("coexist.tiff");
-    write_dynamic_image(&path, &fixture_image(5000, 5000), ImageFormat::Tiff);
+    write_dynamic_image(&path, &fixture_image(2000, 2000), ImageFormat::Tiff);
 
     let hint = ViewportHint {
         long_edge_px: 1500.0,
@@ -1046,7 +1046,7 @@ fn viewport_and_display_tiers_coexist_without_clobbering() {
     assert!(viewport.path.exists(), "viewport file should remain");
     assert!(display.path.exists(), "display file should remain");
     assert_eq!(viewport.width.max(viewport.height), 1536);
-    assert_eq!(display.width.max(display.height), 5000);
+    assert_eq!(display.width.max(display.height), 2000);
 }
 
 #[test]
@@ -1056,7 +1056,7 @@ fn near_identical_viewports_share_a_bucketed_cache_hit() {
     // the cache.
     let dir = TempImageDir::new();
     let path = dir.path().join("bucketed.tiff");
-    write_dynamic_image(&path, &fixture_image(4000, 3000), ImageFormat::Tiff);
+    write_dynamic_image(&path, &fixture_image(2000, 1500), ImageFormat::Tiff);
 
     let first = image::decode_to_cache_viewport(
         &path,
