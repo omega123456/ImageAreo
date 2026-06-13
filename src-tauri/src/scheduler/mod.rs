@@ -43,10 +43,29 @@ use moka::future::Cache;
 use tokio::sync::{oneshot, Notify, OwnedSemaphorePermit, Semaphore};
 
 /// Per-class concurrency permits — the actual bound on peak decode memory, since
-/// queued jobs hold no decode buffers.
+/// queued jobs hold no decode buffers. The display/viewport and thumbnail/sample
+/// budgets scale with the host CPU thread count (see [`host_parallelism`]):
+/// display/viewport = threads / 4, thumbnail/sample = threads / 2. Full-enhance is
+/// always serialized at 1 regardless of core count.
 const FULL_ENHANCE_PERMITS: usize = 1;
-const DISPLAY_VIEWPORT_PERMITS: usize = 4;
-const THUMB_SAMPLE_PERMITS: usize = 10;
+
+/// Detected host hardware concurrency (logical thread count), with a conservative
+/// fallback of 1 when the platform cannot report it.
+fn host_parallelism() -> usize {
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1)
+}
+
+/// Display/viewport-tier permit budget: a quarter of the host threads, floored at 1.
+fn display_viewport_permits() -> usize {
+    (host_parallelism() / 4).max(1)
+}
+
+/// Thumbnail/sample permit budget: half of the host threads, floored at 1.
+fn thumb_sample_permits() -> usize {
+    (host_parallelism() / 2).max(1)
+}
 
 /// Bounded priority-queue capacity per class. On overflow the lowest-priority /
 /// oldest *queued* entry is evicted (its leader resolves `Superseded`). Modest by
@@ -84,11 +103,9 @@ pub enum JobClass {
     /// Heaviest, serialized work: full sensor demosaic / enhance decode and the
     /// clipboard full-RGBA expand. Permit budget = 1.
     FullEnhance,
-    /// Default display / viewport-tier decodes. Permit budget =
-    /// `DISPLAY_VIEWPORT_PERMITS`.
+    /// Default display / viewport-tier decodes. Permit budget = host threads / 4.
     DisplayViewport,
-    /// Thumbnail and backdrop-sample generation. Permit budget =
-    /// `THUMB_SAMPLE_PERMITS`.
+    /// Thumbnail and backdrop-sample generation. Permit budget = host threads / 2.
     ThumbSample,
 }
 
@@ -104,8 +121,8 @@ impl JobClass {
     fn permits(self) -> usize {
         match self {
             JobClass::FullEnhance => FULL_ENHANCE_PERMITS,
-            JobClass::DisplayViewport => DISPLAY_VIEWPORT_PERMITS,
-            JobClass::ThumbSample => THUMB_SAMPLE_PERMITS,
+            JobClass::DisplayViewport => display_viewport_permits(),
+            JobClass::ThumbSample => thumb_sample_permits(),
         }
     }
 
@@ -478,11 +495,11 @@ pub mod __test_support {
     pub const fn full_enhance_permits() -> usize {
         FULL_ENHANCE_PERMITS
     }
-    pub const fn display_viewport_permits() -> usize {
-        DISPLAY_VIEWPORT_PERMITS
+    pub fn display_viewport_permits() -> usize {
+        super::display_viewport_permits()
     }
-    pub const fn thumb_sample_permits() -> usize {
-        THUMB_SAMPLE_PERMITS
+    pub fn thumb_sample_permits() -> usize {
+        super::thumb_sample_permits()
     }
     pub const fn queue_capacity() -> usize {
         QUEUE_CAPACITY
