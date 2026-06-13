@@ -6,7 +6,7 @@
 //! coverage-exclusion list (they require a real OS event loop) and are
 //! verified manually.
 
-use imageareo_lib::menu::{ids, MenuAction, MENU_EVENT};
+use imageareo_lib::menu::{ids, should_attach_native_menu, MenuAction, MENU_EVENT};
 use imageareo_lib::startup::{parse_launch_path, LaunchPathBuffer, OPEN_PATH_EVENT};
 
 #[test]
@@ -75,6 +75,15 @@ fn menu_ids_route_to_frontend_keys() {
 fn natively_handled_menu_items_have_no_frontend_key() {
     assert_eq!(MenuAction::from_id("predefined.quit"), MenuAction::Unknown);
     assert_eq!(MenuAction::from_id("predefined.quit").frontend_key(), None);
+}
+
+#[test]
+fn native_menu_attachment_matches_platform_policy() {
+    #[cfg(target_os = "macos")]
+    assert!(should_attach_native_menu());
+
+    #[cfg(not(target_os = "macos"))]
+    assert!(!should_attach_native_menu());
 }
 
 #[test]

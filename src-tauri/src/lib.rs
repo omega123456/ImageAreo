@@ -74,13 +74,15 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .manage(launch_buffer)
         .setup(|app| {
-            // Build and attach the native application menu, routing item clicks
-            // to the frontend. (OS hookup — coverage-excluded.)
-            let menu = menu::build_menu(app.handle())?;
-            app.set_menu(menu)?;
-            app.on_menu_event(|app, event| {
-                menu::route_menu_event(app, event.id().as_ref());
-            });
+            if menu::should_attach_native_menu() {
+                // Build and attach the native application menu, routing item
+                // clicks to the frontend. (OS hookup — coverage-excluded.)
+                let menu = menu::build_menu(app.handle())?;
+                app.set_menu(menu)?;
+                app.on_menu_event(|app, event| {
+                    menu::route_menu_event(app, event.id().as_ref());
+                });
+            }
 
             // Evict cache files older than the two-day window from both the
             // decoded-image cache and the thumbnail cache. The sweep runs off the

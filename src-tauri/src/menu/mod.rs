@@ -25,6 +25,12 @@ pub mod ids {
 /// The event name carrying a menu-driven action to the frontend.
 pub const MENU_EVENT: &str = "imageareo://menu";
 
+/// macOS gets the native app menu; Windows keeps the chrome minimal and uses
+/// the in-app toolbar/shortcuts instead of an in-window menu bar.
+pub fn should_attach_native_menu() -> bool {
+    cfg!(target_os = "macos")
+}
+
 /// A menu action, resolved from a clicked menu-item ID.
 ///
 /// `OpenDialog`/`OpenFolderDialog` are surfaced to the frontend so it can drive

@@ -1,5 +1,14 @@
 use std::env;
 
+use windows::core::HSTRING;
+use windows::Win32::Foundation::RPC_E_CHANGED_MODE;
+use windows::Win32::System::Com::{
+    CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER,
+    COINIT_APARTMENTTHREADED,
+};
+use windows::Win32::UI::Shell::{
+    ApplicationAssociationRegistrationUI, IApplicationAssociationRegistrationUI,
+};
 use winreg::enums::HKEY_CURRENT_USER;
 use winreg::RegKey;
 
@@ -35,12 +44,72 @@ pub fn query_file_associations() -> Result<Vec<ExtAssociation>, AssociationError
 pub fn set_default_associations(exts: &[String]) -> Result<(), AssociationError> {
     let validated = validate_extensions(exts.iter())?;
     register_file_associations(&validated)?;
-    tauri_plugin_opener::open_url(DEFAULT_APPS_URL, None::<&str>).map_err(|err| {
-        AssociationError::register(format!(
-            "failed to open Windows Default Apps settings ({DEFAULT_APPS_URL}): {err}"
-        ))
+    launch_association_ui().or_else(|association_error| {
+        tauri_plugin_opener::open_url(DEFAULT_APPS_URL, None::<&str>).map_err(|err| {
+            AssociationError::register(format!(
+                "failed to open ImageAreo's association chooser ({association_error}); \
+                 fallback to Windows Default Apps settings ({DEFAULT_APPS_URL}) also failed: {err}"
+            ))
+        })
     })?;
     Ok(())
+}
+
+struct ComApartment {
+    should_uninitialize: bool,
+}
+
+impl ComApartment {
+    fn initialize() -> Result<Self, AssociationError> {
+        let hr = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+        if hr.is_ok() {
+            return Ok(Self {
+                should_uninitialize: true,
+            });
+        }
+
+        if hr == RPC_E_CHANGED_MODE {
+            return Ok(Self {
+                should_uninitialize: false,
+            });
+        }
+
+        Err(AssociationError::register(format!(
+            "failed to initialize COM for the Windows association chooser: {hr}"
+        )))
+    }
+}
+
+impl Drop for ComApartment {
+    fn drop(&mut self) {
+        if self.should_uninitialize {
+            unsafe { CoUninitialize() };
+        }
+    }
+}
+
+fn launch_association_ui() -> Result<(), AssociationError> {
+    let _apartment = ComApartment::initialize()?;
+    let association_ui: IApplicationAssociationRegistrationUI = unsafe {
+        CoCreateInstance(
+            &ApplicationAssociationRegistrationUI,
+            None,
+            CLSCTX_INPROC_SERVER,
+        )
+    }
+    .map_err(|err| {
+        AssociationError::register(format!(
+            "failed to create the Windows association chooser: {err}"
+        ))
+    })?;
+    let application_name = HSTRING::from(WINDOWS_APPLICATION_NAME);
+
+    unsafe { association_ui.LaunchAdvancedAssociationUI(&application_name) }.map_err(|err| {
+        AssociationError::register(format!(
+            "failed to open the Windows association chooser for {}: {err}",
+            WINDOWS_APPLICATION_NAME
+        ))
+    })
 }
 
 fn register_file_associations(exts: &[String]) -> Result<(), AssociationError> {
@@ -104,6 +173,8 @@ fn register_file_associations(exts: &[String]) -> Result<(), AssociationError> {
                 "failed to write ApplicationDescription capability: {err}"
             ))
         })?;
+
+    let _ = capabilities.delete_subkey_all("FileAssociations");
 
     let (file_associations, _) = capabilities
         .create_subkey("FileAssociations")
