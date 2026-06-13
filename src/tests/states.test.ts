@@ -133,6 +133,43 @@ describe("ErrorState", () => {
     await fireEvent.click(screen.getByRole("button", { name: "Open Another" }));
     expect(screen.getByText("Could not open this image")).toBeInTheDocument();
   });
+
+  it("limit variant shows the too-large copy with 256 MP and no Try Again", () => {
+    render(ErrorState, { props: { variant: "limit" } });
+
+    expect(screen.getByText("This image is too large to open")).toBeInTheDocument();
+    expect(
+      screen.getByText(/exceeds the 256 MP display limit/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Try Again" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Open Another" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Could not open this image")).not.toBeInTheDocument();
+  });
+
+  it("limit variant Open Another forwards to the handler", async () => {
+    const onOpenAnother = vi.fn();
+    render(ErrorState, { props: { variant: "limit", onOpenAnother } });
+
+    await fireEvent.click(screen.getByRole("button", { name: "Open Another" }));
+    expect(onOpenAnother).toHaveBeenCalledOnce();
+  });
+});
+
+describe("ImageViewer limit error variant", () => {
+  it("renders the limit ErrorState when the viewer error-reason is limit", () => {
+    viewer.load("", "huge.png");
+    viewer.setError("limit");
+    render(ImageViewer);
+
+    expect(screen.getByText("This image is too large to open")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Try Again" }),
+    ).not.toBeInTheDocument();
+  });
 });
 
 describe("EmptyState drag affordance", () => {

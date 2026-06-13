@@ -10,10 +10,11 @@ use imageareo_lib::commands::reveal::RevealCommandError;
 use imageareo_lib::commands::{self};
 use imageareo_lib::image::{self, DecodeIntent, ImageFormatSupport};
 use imageareo_lib::menu::{self, ids, MenuAction, MENU_EVENT};
+use imageareo_lib::scheduler::Scheduler;
 use imageareo_lib::startup::{parse_launch_path, LaunchPathBuffer};
 use imageareo_lib::thumbnail;
 use tauri::test::{mock_builder, mock_context, noop_assets};
-use tauri::Listener;
+use tauri::{Listener, Manager};
 
 fn write_image(path: &Path, width: u32, height: u32, format: ImageFormat) {
     let image = DynamicImage::ImageRgba8(RgbaImage::from_pixel(
@@ -99,8 +100,13 @@ async fn commands_return_expected_transport_shapes() {
     let names: Vec<_> = entries.into_iter().map(|entry| entry.name).collect();
     assert_eq!(names, vec!["image-01.png", "image-02.png"]);
 
-    let decoded = commands::decode_image(
+    let scheduler = Scheduler::new();
+    let decoded = commands::decode_image_via(
+        &scheduler,
         fixture_path("sample.heic").to_string_lossy().into_owned(),
+        None,
+        None,
+        None,
         None,
     )
     .await
@@ -115,12 +121,59 @@ async fn commands_return_expected_transport_shapes() {
         (48, 48, 1)
     );
 
-    let thumbnail = commands::generate_thumbnail(
+    let thumbnail = commands::generate_thumbnail_via(
+        &scheduler,
         fixture_path("sample.jxl").to_string_lossy().into_owned(),
         12,
+        None,
+        None,
     )
     .await
     .expect("thumbnail command should succeed");
+    let cache_root = thumbnail::thumbnail_cache_dir()
+        .to_string_lossy()
+        .into_owned();
+    assert!(thumbnail.path.starts_with(&cache_root));
+}
+
+/// Drive the real `#[tauri::command]` wrappers (the ones that pull the managed
+/// `Scheduler` from `State`) through a mock app, so the thin command-to-`_via`
+/// delegation is exercised end to end — not just the `_via` helpers.
+#[tokio::test]
+async fn scheduler_backed_command_wrappers_route_through_managed_state() {
+    let _cache = common::CacheGuard::new();
+    let app = mock_builder()
+        .manage(Scheduler::new())
+        .build(mock_context(noop_assets()))
+        .expect("mock app should build");
+    let scheduler = app.state::<Scheduler>();
+
+    let heic = fixture_path("sample.heic").to_string_lossy().into_owned();
+    let decoded = commands::decode_image(
+        scheduler.clone(),
+        heic.clone(),
+        Some(DecodeIntent::Display),
+        None,
+        Some(1),
+        None,
+    )
+    .await
+    .expect("decode wrapper should route through the scheduler");
+    assert!(!decoded.path.starts_with("data:"));
+
+    let dir = TempImageDir::new();
+    let png = dir.path().join("sample.png");
+    write_image(&png, 16, 12, ImageFormat::Png);
+    let png_path = png.to_string_lossy().into_owned();
+
+    let data_url = commands::sample_image(scheduler.clone(), png_path.clone(), 24, None, Some(2))
+        .await
+        .expect("sample wrapper should route through the scheduler");
+    assert!(data_url.starts_with("data:image/jpeg;base64,"));
+
+    let thumbnail = commands::generate_thumbnail(scheduler.clone(), png_path, 16, None, Some(3))
+        .await
+        .expect("thumbnail wrapper should route through the scheduler");
     let cache_root = thumbnail::thumbnail_cache_dir()
         .to_string_lossy()
         .into_owned();
@@ -242,19 +295,35 @@ async fn command_wrappers_cover_error_paths_and_native_peek_behavior() {
     let png = dir.path().join("sample.png");
     write_image(&png, 16, 12, ImageFormat::Png);
 
-    let zero_size = commands::sample_image(png.to_string_lossy().into_owned(), 0)
-        .await
-        .expect_err("zero sample size should error");
+    let scheduler = Scheduler::new();
+    let zero_size = commands::sample_image_via(
+        &scheduler,
+        png.to_string_lossy().into_owned(),
+        0,
+        None,
+        None,
+    )
+    .await
+    .expect_err("zero sample size should error");
     assert_eq!(zero_size.code, "decode_failed");
 
-    let native_peek =
-        commands::peek_decoded_image(png.to_string_lossy().into_owned(), DecodeIntent::Display)
-            .await
-            .expect("native formats are never cached in the backend");
+    let native_peek = commands::peek_decoded_image(
+        png.to_string_lossy().into_owned(),
+        DecodeIntent::Display,
+        None,
+    )
+    .await
+    .expect("native formats are never cached in the backend");
     assert!(native_peek.is_none());
 
-    let thumb_zero = commands::generate_thumbnail(png.to_string_lossy().into_owned(), 0)
-        .await
-        .expect_err("zero thumbnail size should error");
+    let thumb_zero = commands::generate_thumbnail_via(
+        &scheduler,
+        png.to_string_lossy().into_owned(),
+        0,
+        None,
+        None,
+    )
+    .await
+    .expect_err("zero thumbnail size should error");
     assert_eq!(thumb_zero.code, "decode_failed");
 }

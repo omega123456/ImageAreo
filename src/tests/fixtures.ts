@@ -107,6 +107,15 @@ export const IPC_FIXTURES: Record<string, IpcHandler> = {
       modified: 1_700_000_100_000,
     },
   ],
+  // Small, non-animated, within-ceiling probe by default so native images take
+  // the direct (WebView) path. Tests override for large/animated/over-ceiling.
+  probe_image: () => ({
+    width: 800,
+    height: 600,
+    pixels: 480_000,
+    animated: false,
+    exceedsLimit: false,
+  }),
   decode_image: () => ({
     path: "/tmp/imageareo-images/decoded.jpg",
     width: 1,

@@ -45,10 +45,25 @@ exif = { package = "kamadak-exif", version = "0.6.1" }
 fast_image_resize = "5.1.2"
 heic = { version = "0.1.6", features = ["av1"] }
 image = { version = "0.25.10", default-features = false, features = ["avif", "bmp", "gif", "ico", "jpeg", "png", "tiff", "webp"] }
+# Cheap, format-aware header-only dimension reads (no pixel decode). Covers the
+# heavy formats (HEIC/JXL/AVIF/TIFF) that `image` can't probe reliably; the
+# decode preflight + `probe_image` command fall back to `image::image_dimensions`
+# for anything it does not recognize.
+imagesize = "0.13"
 jxl-oxide = "0.12.5"
+# Single-flight coalescing for decode-class work. `moka::future::Cache::get_with`
+# runs the leader once and joins duplicate/returning callers to the same in-flight
+# future. Pinned to 0.12.15, verified during planning to have NO dependency on the
+# `time` crate, so it does not conflict with the fragile `time = "=0.3.47"` pin.
+moka = { version = "0.12.15", features = ["future"] }
 rawler = "0.7.2"
 serde = { version = "~1.0", features = ["derive"] }
 serde_json = "~1.0"
+# Scheduler concurrency primitives (Semaphore / Notify / oneshot) used by the
+# decode scheduler. Only the `sync` feature is needed; the async runtime is
+# Tauri's (`tauri::async_runtime`, itself tokio). `tokio-util` is intentionally
+# NOT added — the scheduler has no cancellation (running jobs always finish).
+tokio = { version = "~1", features = ["sync"] }
 tauri-plugin-store = "~2.4"
 tauri-plugin-updater = { version = "~2.10", features = ["rustls-tls"] }
 tauri-plugin-process = "2"
@@ -77,7 +92,7 @@ filetime = "~0.2"
 # accepts, so the scaled-JPEG pixel-mapping branches can be unit-tested directly.
 jpeg-decoder = "0.3.2"
 tempfile = "~3.20"
-tokio = { version = "~1", features = ["macros", "rt", "test-util"] }
+tokio = { version = "~1", features = ["macros", "rt", "rt-multi-thread", "sync", "time", "test-util"] }
 tauri = { version = "~2.11", features = ["test"] }
 
 # Compile dependencies with full optimization even in the dev profile. Image

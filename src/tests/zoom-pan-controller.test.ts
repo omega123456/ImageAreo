@@ -503,4 +503,34 @@ describe("ZoomPanController", () => {
       }
     });
   });
+
+  describe("displayedLongEdgeDevicePx", () => {
+    it("returns the scaled, orientation-aware long edge in device pixels", () => {
+      const viewer = makeViewer({ naturalWidth: 4000, naturalHeight: 3000, zoom: 2 });
+      const c = new ZoomPanController(container, viewer);
+      // dpr is 1 in jsdom; long edge 4000 * zoom 2 = 8000.
+      expect(c.displayedLongEdgeDevicePx()).toBe(8000);
+      c.destroy();
+    });
+
+    it("uses the orientation-swapped long edge for a 90° image", () => {
+      const viewer = makeViewer({
+        naturalWidth: 600,
+        naturalHeight: 4000,
+        orientation: 6,
+        zoom: 1,
+      });
+      const c = new ZoomPanController(container, viewer);
+      // Orientation swap does not change which dimension is the max here (4000).
+      expect(c.displayedLongEdgeDevicePx()).toBe(4000);
+      c.destroy();
+    });
+
+    it("returns 0 when no image is loaded", () => {
+      const viewer = makeViewer({ naturalWidth: 0, naturalHeight: 0 });
+      const c = new ZoomPanController(container, viewer);
+      expect(c.displayedLongEdgeDevicePx()).toBe(0);
+      c.destroy();
+    });
+  });
 });

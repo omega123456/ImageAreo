@@ -135,6 +135,39 @@ fn variant_candidate_extensions_match_intent() {
         CacheVariant::Enhance.candidate_extensions(),
         &["jpg", "png"]
     );
+    assert_eq!(
+        CacheVariant::Viewport.candidate_extensions(),
+        &["jpg", "png"]
+    );
+}
+
+#[test]
+fn viewport_variant_keys_distinctly_from_display_at_same_cap() {
+    // The viewport tier must never collide with the 8192 display tier even when
+    // the caps happen to coincide: the variant tag alone keeps them apart.
+    let dir = TempImageDir::new();
+    let source = dir.path().join("vp.png");
+    common::write_dynamic_fixture(&source, 8, 8, ImageFormat::Png);
+
+    let display = disk_cache::cache_path_for(&source, CacheVariant::Display, 8192, "jpg").unwrap();
+    let viewport =
+        disk_cache::cache_path_for(&source, CacheVariant::Viewport, 8192, "jpg").unwrap();
+
+    assert_ne!(display.file_stem(), viewport.file_stem());
+}
+
+#[test]
+fn viewport_caps_key_distinctly_so_buckets_do_not_collide() {
+    // Different bucketed viewport caps produce different cache files, so a
+    // 2048-bucket derivative and a 4096-bucket derivative coexist.
+    let dir = TempImageDir::new();
+    let source = dir.path().join("buckets.png");
+    common::write_dynamic_fixture(&source, 8, 8, ImageFormat::Png);
+
+    let small = disk_cache::cache_path_for(&source, CacheVariant::Viewport, 2048, "jpg").unwrap();
+    let large = disk_cache::cache_path_for(&source, CacheVariant::Viewport, 4096, "jpg").unwrap();
+
+    assert_ne!(small.file_stem(), large.file_stem());
 }
 
 #[test]

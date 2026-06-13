@@ -27,6 +27,8 @@
     enhanceBounds?: DOMRect | null;
     /** Viewport rect of the floating toolbar, sampled at its actual position. */
     toolbarBounds?: DOMRect | null;
+    /** Viewport rect of the Sharpening pill, sampled independently like enhance. */
+    sharpenBounds?: DOMRect | null;
   }
 
   let {
@@ -36,6 +38,7 @@
     bottomInset = 0,
     enhanceBounds = null,
     toolbarBounds = null,
+    sharpenBounds = null,
   }: Props = $props();
 
   let container = $state<HTMLDivElement | null>(null);
@@ -128,6 +131,22 @@
         chromeTone.enhanceDark = surroundLum < 0.55;
       }
 
+      if (sharpenBounds) {
+        const sharpenRect = rectWithinContainer(sharpenBounds, containerRect);
+        if (sharpenRect) {
+          const sharpenLum = sampleTone(sharpenRect);
+          if (sharpenLum !== null) {
+            chromeTone.sharpenDark = sharpenLum < 0.55;
+          } else if (surroundLum !== null) {
+            chromeTone.sharpenDark = surroundLum < 0.55;
+          }
+        } else if (surroundLum !== null) {
+          chromeTone.sharpenDark = surroundLum < 0.55;
+        }
+      } else if (surroundLum !== null) {
+        chromeTone.sharpenDark = surroundLum < 0.55;
+      }
+
       return;
     }
 
@@ -136,6 +155,7 @@
       const dark = surroundLum < 0.55;
       chromeTone.toolbarDark = dark;
       chromeTone.enhanceDark = dark;
+      chromeTone.sharpenDark = dark;
     }
   }
 
@@ -248,6 +268,10 @@
       enhanceBounds?.top,
       enhanceBounds?.width,
       enhanceBounds?.height,
+      sharpenBounds?.left,
+      sharpenBounds?.top,
+      sharpenBounds?.width,
+      sharpenBounds?.height,
     ];
     void _deps;
     if (typeof window === "undefined") return;
@@ -255,10 +279,48 @@
     return () => window.clearTimeout(id);
   });
 
+  // Report the viewport long edge (CSS px) to the store so the next display
+  // open sizes its initial tier to the viewport (#5). Re-published on resize.
+  $effect(() => {
+    if (typeof ResizeObserver === "undefined" || !container) return;
+    const publish = (): void => {
+      const rect = container?.getBoundingClientRect();
+      if (rect) viewer.setViewportLongEdge(Math.max(rect.width, rect.height));
+    };
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(container);
+    return () => observer.disconnect();
+  });
+
+  // Trigger the on-zoom sharper-tier upgrade. When a zoom-in pushes the
+  // displayed resolution past the current viewport tier, the store fetches the
+  // 8192 tier and drives the `sharpening` pill. Debounced so a continuous wheel
+  // zoom does not fire a request every frame; zoom-out never triggers (the store
+  // guards on the displayed long edge exceeding the current tier).
+  $effect(() => {
+    const _deps = [viewer.status, viewer.zoom, viewer.rotation, viewer.orientation];
+    void _deps;
+    if (typeof window === "undefined" || !controller) return;
+    const ctrl = controller;
+    const id = window.setTimeout(() => {
+      void viewer.maybeUpgradeTier(ctrl.displayedLongEdgeDevicePx());
+    }, 200);
+    return () => window.clearTimeout(id);
+  });
+
   function onImageLoad(e: Event): void {
     const img = e.currentTarget as HTMLImageElement;
+    // A seamless tier swap preserves the user's zoom/pan (the store already
+    // rescaled zoom for the new intrinsic size); re-fitting would snap the view
+    // back to fit, which is the bug we are avoiding.
+    const preserveTransform = viewer.consumePreserveTransform();
     viewer.setReady(img.naturalWidth, img.naturalHeight);
     lastReadyName = viewer.name;
+    if (preserveTransform) {
+      bumpChromeSampleVersion();
+      return;
+    }
     // Defer the fit to the next frame so layout has settled — a cached/
     // synchronous decode can fire `load` before the container has a real size.
     requestAnimationFrame(() => {
@@ -298,7 +360,11 @@
   {#if viewer.status === "idle"}
     <EmptyState {onOpen} />
   {:else if viewer.status === "error"}
-    <ErrorState onRetry={retry} onOpenAnother={onOpen} />
+    <ErrorState
+      variant={viewer.errorReason === "limit" ? "limit" : "error"}
+      onRetry={retry}
+      onOpenAnother={onOpen}
+    />
   {:else}
     {#if viewer.status === "loading"}
       <LoadingState />

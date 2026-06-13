@@ -3,6 +3,7 @@ export const IPC_COMMANDS = {
   queryFileAssociations: "query_file_associations",
   setDefaultAssociations: "set_default_associations",
   scanFolder: "scan_folder",
+  probeImage: "probe_image",
   decodeImage: "decode_image",
   peekDecodedImage: "peek_decoded_image",
   sampleImage: "sample_image",
@@ -54,7 +55,47 @@ export interface DecodedImage {
   orientation: number;
 }
 
+/**
+ * Header-only dimension probe of an image file (no full pixel decode). Used by
+ * the viewer to route large native images through the backend and to
+ * short-circuit over-ceiling files to the "limit" state before decoding.
+ */
+export interface ProbedImage {
+  width: number;
+  height: number;
+  /** `width * height` reported by the backend. */
+  pixels: number;
+  /** True for multi-frame GIF / animated WebP — never routed (preserve playback). */
+  animated: boolean;
+  /** True when `pixels` exceeds the 256 MP hard ceiling (`MAX_DISPLAY_PIXELS`). */
+  exceedsLimit: boolean;
+}
+
+export interface ProbeImageRequest {
+  path: string;
+}
+
 export type DecodeImageQuality = "preview" | "display" | "enhance";
+
+/**
+ * Scheduling priority hint sent with each decode-class request. Maps onto the
+ * backend scheduler's priority queue (current image > visible thumbnails >
+ * prefetch). Optional; callers that have not yet wired a real priority (Phase 2)
+ * may omit it, and the backend defaults to `"visibleThumbnail"`. Real values are
+ * wired by Phases 4/6.
+ */
+export type RequestPriority = "prefetch" | "visibleThumbnail" | "currentImage";
+
+/**
+ * Optional scheduler hints carried by every decode-class request. `priority`
+ * drives the backend's priority queue; `generation` is a per-open token that
+ * complements the existing frontend stale-result guard (the backend dedups by
+ * key and never cancels running work).
+ */
+export interface SchedulerHint {
+  priority?: RequestPriority;
+  generation?: number;
+}
 
 export interface Thumbnail {
   url: string;
@@ -74,17 +115,32 @@ export interface ScanFolderRequest {
   sortOrder: SortOrder;
 }
 
-export interface DecodeImageRequest {
-  path: string;
-  quality?: DecodeImageQuality;
+/**
+ * Viewport hint for sizing the initial display derivative (#5). The backend
+ * sizes the tier to `clamp(round(longEdgePx * dpr), VIEWPORT_TIER_MIN_EDGE,
+ * DISPLAY_LONG_EDGE_CAP)`, bucketed for cache reuse. Applies only to
+ * `quality: "display"` decodes; omitted for `preview`/`enhance` and for the
+ * on-zoom sharper-tier request (which targets the full 8192 tier).
+ */
+export interface ViewportHint {
+  /** Viewport long edge in CSS pixels. */
+  longEdgePx: number;
+  /** Device pixel ratio (`window.devicePixelRatio`). */
+  dpr: number;
 }
 
-export interface GenerateThumbnailRequest {
+export interface DecodeImageRequest extends SchedulerHint {
+  path: string;
+  quality?: DecodeImageQuality;
+  viewport?: ViewportHint;
+}
+
+export interface GenerateThumbnailRequest extends SchedulerHint {
   path: string;
   size: number;
 }
 
-export interface SampleImageRequest {
+export interface SampleImageRequest extends SchedulerHint {
   path: string;
   size: number;
 }

@@ -63,6 +63,7 @@ function installTauriMock(page, config) {
     const basename = (p) => String(p).split(/[\\/]/).pop();
     const decodedImages = cfg.decodedImages ?? {};
     const sampledImages = cfg.sampledImages ?? {};
+    const probedImages = cfg.probedImages ?? {};
 
     const invoke = (cmd, args) => {
       switch (cmd) {
@@ -70,6 +71,19 @@ function installTauriMock(page, config) {
           return Promise.resolve(cfg.frontendReadyPath ?? null);
         case "scan_folder":
           return Promise.resolve(cfg.entries ?? []);
+        case "probe_image":
+          // Header-only dimension probe. Default to a small, non-animated,
+          // under-ceiling result so native fixtures render straight through the
+          // WebView (`convertFileSrc`) instead of being routed to the backend.
+          return Promise.resolve(
+            probedImages[args.path] ?? {
+              width: 600,
+              height: 400,
+              pixels: 240_000,
+              animated: false,
+              exceedsLimit: false,
+            },
+          );
         case "generate_thumbnail":
           return Promise.resolve({ path: args.path });
         case "sample_image":
@@ -163,6 +177,7 @@ function serveFixtures(page) {
  * @param {Array} [opts.fileAssociations] file associations returned to the drawer
  * @param {Record<string, unknown>} [opts.decodedImages] mocked backend decode payloads
  * @param {Record<string, string>} [opts.sampledImages] path remap for sample_image
+ * @param {Record<string, unknown>} [opts.probedImages] per-path probe_image overrides
  */
 export async function bootApp(page, opts) {
   const {
@@ -172,6 +187,7 @@ export async function bootApp(page, opts) {
     fileAssociations,
     decodedImages,
     sampledImages,
+    probedImages,
   } = opts;
 
   await page.emulateMedia({ colorScheme: theme });
@@ -182,6 +198,7 @@ export async function bootApp(page, opts) {
     fileAssociations,
     decodedImages,
     sampledImages,
+    probedImages,
   });
 
   // Wait for DOM ready, not full `load`: the loading-state scenario holds an

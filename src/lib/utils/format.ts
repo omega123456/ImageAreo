@@ -68,6 +68,26 @@ export const RAW_EXTENSIONS: ReadonlySet<string> = new Set([
   "3fr",
 ]);
 
+/**
+ * Pixel-count threshold above which a *native* image (jpg/jpeg/png/gif/webp) is
+ * routed through the backend display pipeline instead of being rendered at full
+ * resolution in the WebView. Common DSLR/phone photos stay on the fast direct
+ * path; only genuinely large native images route through the backend cap.
+ *
+ * Kept in sync with `NATIVE_ROUTING_PIXELS` in src-tauri/src/image/probe.rs.
+ */
+export const NATIVE_ROUTING_PIXELS = 50_000_000;
+
+/**
+ * Hard pixel ceiling (256 MP = 16384 × 16384). Images whose pixel count exceeds
+ * this are refused by the backend with an `image_too_large` error; the viewer
+ * surfaces the "limit" state. The MP figure shown to the user is derived from
+ * this constant, never hardcoded.
+ *
+ * Kept in sync with `MAX_PIXELS` in src-tauri/src/image/mod.rs.
+ */
+export const MAX_DISPLAY_PIXELS = 268_435_456;
+
 /** Lower-cased extension of a path/filename, without the leading dot. */
 export function extensionOf(path: string): string {
   const name = path.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? "";

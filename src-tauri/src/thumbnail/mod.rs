@@ -1,16 +1,17 @@
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::io::Cursor;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{Mutex, OnceLock};
+use std::time::UNIX_EPOCH;
 
 use ::image::{
     codecs::jpeg::JpegEncoder, DynamicImage, ExtendedColorType, GenericImageView, ImageReader,
     RgbImage, RgbaImage,
 };
 use fast_image_resize as fir;
-use fast_image_resize::images::Image;
 
 use crate::cache_dirs;
 use crate::image::{self, DecodeImageError};
@@ -32,10 +33,9 @@ pub fn generate_thumbnail(
     logical_size: u32,
 ) -> Result<ThumbnailData, DecodeImageError> {
     if logical_size == 0 {
-        return Err(DecodeImageError {
-            code: "decode_failed",
-            message: "thumbnail size must be greater than zero".to_string(),
-        });
+        return Err(DecodeImageError::decode(
+            "thumbnail size must be greater than zero",
+        ));
     }
 
     let cache_path = cache_path_for(path, logical_size)?;
@@ -48,7 +48,7 @@ pub fn generate_thumbnail(
         });
     }
 
-    let loaded = image::load_thumbnail_source(path, logical_size.saturating_mul(2))?;
+    let loaded = image::load_thumbnail_source_chain(path, logical_size.saturating_mul(2))?;
     // Bake EXIF orientation into the pixels: the filmstrip renders this cached
     // JPEG directly and applies no display transform of its own.
     let oriented = image::apply_exif_orientation(loaded.image, loaded.orientation);
@@ -71,17 +71,104 @@ pub fn generate_thumbnail(
 /// URL taints and cannot be read).
 pub fn sample_jpeg(path: &Path, logical_size: u32) -> Result<Vec<u8>, DecodeImageError> {
     if logical_size == 0 {
-        return Err(DecodeImageError {
-            code: "decode_failed",
-            message: "sample size must be greater than zero".to_string(),
-        });
+        return Err(DecodeImageError::decode(
+            "sample size must be greater than zero",
+        ));
     }
 
-    let loaded = image::load_thumbnail_source(path, logical_size.saturating_mul(2))?;
+    // Source-keyed tone cache (#9): rapid navigation re-samples the same images
+    // repeatedly (e.g. next/prev/next). The sampled JPEG depends only on the
+    // source identity (path + mtime + size) and the logical size, so a hit lets
+    // us skip the decode + resize + encode entirely. The key reuses the same
+    // identity components as the on-disk cache stem.
+    let key = sample_cache_key(path, logical_size)?;
+    if let Some(bytes) = sample_tone_cache_get(&key) {
+        return Ok(bytes);
+    }
+
+    let loaded = image::load_thumbnail_source_chain(path, logical_size.saturating_mul(2))?;
     let oriented = image::apply_exif_orientation(loaded.image, loaded.orientation);
     let (width, height) = target_dimensions(&oriented, logical_size);
     let resized = resize_image(&oriented, width, height)?;
-    encode_jpeg(&resized)
+    let bytes = encode_jpeg(&resized)?;
+
+    sample_tone_cache_put(key, bytes.clone());
+    Ok(bytes)
+}
+
+/// Maximum number of source-keyed sample-tone entries retained in memory. A
+/// sampled JPEG is small (a few hundred bytes to a few KB at sample sizes), so a
+/// few hundred entries is a trivial footprint and covers a deep navigation
+/// history without unbounded growth.
+const SAMPLE_TONE_CACHE_CAPACITY: usize = 256;
+
+/// Process-wide source-keyed sample-tone cache. Maps a source-identity key to
+/// the encoded sample JPEG. Bounded by [`SAMPLE_TONE_CACHE_CAPACITY`] with a
+/// simple oldest-insertion eviction (the map is small and sampling is not on a
+/// tight hot loop, so an exact LRU is unnecessary).
+fn sample_tone_cache() -> &'static Mutex<SampleToneCache> {
+    static CACHE: OnceLock<Mutex<SampleToneCache>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(SampleToneCache::default()))
+}
+
+#[derive(Default)]
+struct SampleToneCache {
+    entries: HashMap<String, Vec<u8>>,
+    /// Insertion order, used for FIFO eviction when over capacity.
+    order: Vec<String>,
+}
+
+fn sample_tone_cache_get(key: &str) -> Option<Vec<u8>> {
+    let cache = sample_tone_cache()
+        .lock()
+        .expect("sample tone cache mutex should not be poisoned");
+    cache.entries.get(key).cloned()
+}
+
+fn sample_tone_cache_put(key: String, bytes: Vec<u8>) {
+    let mut cache = sample_tone_cache()
+        .lock()
+        .expect("sample tone cache mutex should not be poisoned");
+    if cache.entries.contains_key(&key) {
+        return;
+    }
+    if cache.entries.len() >= SAMPLE_TONE_CACHE_CAPACITY {
+        if let Some(oldest) = (!cache.order.is_empty()).then(|| cache.order.remove(0)) {
+            cache.entries.remove(&oldest);
+        }
+    }
+    cache.order.push(key.clone());
+    cache.entries.insert(key, bytes);
+}
+
+/// Compute the source-identity key for the sample-tone cache: the same
+/// (path, mtime, size, logical_size) components the on-disk cache stem uses, so
+/// a touched/edited file (changed mtime/size) yields a fresh key and a stale
+/// sample is never served.
+fn sample_cache_key(path: &Path, logical_size: u32) -> Result<String, DecodeImageError> {
+    let metadata = fs::metadata(path)
+        .map_err(|err| DecodeImageError::io(format!("failed to stat {}: {err}", path.display())))?;
+    let modified = metadata.modified().map_err(|err| {
+        DecodeImageError::io(format!(
+            "failed to read modified time for {}: {err}",
+            path.display()
+        ))
+    })?;
+    let modified_since_epoch = modified.duration_since(UNIX_EPOCH).map_err(|err| {
+        DecodeImageError::io(format!(
+            "modified time for {} was before unix epoch: {err}",
+            path.display()
+        ))
+    })?;
+
+    let mut hasher = DefaultHasher::new();
+    THUMBNAIL_CACHE_VERSION.hash(&mut hasher);
+    path.to_string_lossy().hash(&mut hasher);
+    logical_size.hash(&mut hasher);
+    modified_since_epoch.as_secs().hash(&mut hasher);
+    modified_since_epoch.subsec_nanos().hash(&mut hasher);
+    metadata.len().hash(&mut hasher);
+    Ok(format!("sample:{:016x}", hasher.finish()))
 }
 
 fn target_dimensions(image: &DynamicImage, logical_size: u32) -> (u32, u32) {
@@ -107,60 +194,79 @@ fn target_dimensions(image: &DynamicImage, logical_size: u32) -> (u32, u32) {
     }
 }
 
+/// Resize `image` to `width`×`height`. Opaque-typed sources resize through the
+/// alpha-free RGB path (3 bytes/px, no alpha plane allocated); alpha-typed
+/// sources resize through the RGBA path. This mirrors the Phase 7 opaque/alpha
+/// split in `image/mod.rs` so an opaque photo no longer pays the RGBA round-trip
+/// just to produce a thumbnail. The returned `DynamicImage` is `ImageRgb8` or
+/// `ImageRgba8` accordingly.
 fn resize_image(
     image: &DynamicImage,
     width: u32,
     height: u32,
-) -> Result<RgbaImage, DecodeImageError> {
-    let source = image.to_rgba8();
-    let source_image = Image::from_vec_u8(
-        source.width(),
-        source.height(),
+) -> Result<DynamicImage, DecodeImageError> {
+    if image.color().has_alpha() {
+        resize_rgba(image.to_rgba8(), width, height).map(DynamicImage::ImageRgba8)
+    } else {
+        resize_rgb(image.to_rgb8(), width, height).map(DynamicImage::ImageRgb8)
+    }
+}
+
+fn resize_rgb(source: RgbImage, width: u32, height: u32) -> Result<RgbImage, DecodeImageError> {
+    let (src_w, src_h) = (source.width(), source.height());
+    let raw = image::fir_resize(
         source.into_raw(),
-        fir::PixelType::U8x4,
-    )
-    .map_err(|err| DecodeImageError {
-        code: "decode_failed",
-        message: format!("failed to prepare thumbnail source buffer: {err}"),
-    })?;
+        src_w,
+        src_h,
+        width,
+        height,
+        fir::PixelType::U8x3,
+        fir::FilterType::Bilinear,
+    )?;
 
-    let mut destination_image = Image::new(width, height, fir::PixelType::U8x4);
-    let mut resizer = fir::Resizer::new();
-
-    resizer
-        .resize(
-            &source_image,
-            &mut destination_image,
-            &fir::ResizeOptions::new()
-                .resize_alg(fir::ResizeAlg::Convolution(fir::FilterType::Bilinear)),
-        )
-        .map_err(|err| DecodeImageError {
-            code: "decode_failed",
-            message: format!("failed to resize thumbnail: {err}"),
-        })?;
-
-    RgbaImage::from_vec(width, height, destination_image.into_vec()).ok_or_else(|| {
-        DecodeImageError {
-            code: "decode_failed",
-            message: "resizer returned an invalid RGBA thumbnail buffer".to_string(),
-        }
+    RgbImage::from_vec(width, height, raw).ok_or_else(|| {
+        DecodeImageError::decode("resizer returned an invalid RGB thumbnail buffer")
     })
 }
 
-fn encode_jpeg(image: &RgbaImage) -> Result<Vec<u8>, DecodeImageError> {
-    let rgb = flatten_to_rgb(image);
+fn resize_rgba(source: RgbaImage, width: u32, height: u32) -> Result<RgbaImage, DecodeImageError> {
+    let (src_w, src_h) = (source.width(), source.height());
+    let raw = image::fir_resize(
+        source.into_raw(),
+        src_w,
+        src_h,
+        width,
+        height,
+        fir::PixelType::U8x4,
+        fir::FilterType::Bilinear,
+    )?;
+
+    RgbaImage::from_vec(width, height, raw).ok_or_else(|| {
+        DecodeImageError::decode("resizer returned an invalid RGBA thumbnail buffer")
+    })
+}
+
+/// Encode a resized thumbnail as JPEG. An RGB8 image encodes directly (no alpha
+/// plane); an RGBA8 image is first flattened over a neutral background. Other
+/// color types are coerced through `to_rgb8` for safety.
+fn encode_jpeg(image: &DynamicImage) -> Result<Vec<u8>, DecodeImageError> {
+    let rgb = match image {
+        DynamicImage::ImageRgb8(rgb) => rgb.clone(),
+        DynamicImage::ImageRgba8(rgba) => flatten_to_rgb(rgba),
+        other => other.to_rgb8(),
+    };
+
     let mut cursor = Cursor::new(Vec::new());
     let mut encoder = JpegEncoder::new_with_quality(&mut cursor, 80);
     encoder
         .encode(
             rgb.as_raw(),
-            image.width(),
-            image.height(),
+            rgb.width(),
+            rgb.height(),
             ExtendedColorType::Rgb8,
         )
-        .map_err(|err| DecodeImageError {
-            code: "encode_failed",
-            message: format!("failed to encode thumbnail JPEG: {err}"),
+        .map_err(|err| {
+            DecodeImageError::encode(format!("failed to encode thumbnail JPEG: {err}"))
         })?;
 
     Ok(cursor.into_inner())
@@ -218,6 +324,7 @@ fn cache_path_for(path: &Path, logical_size: u32) -> Result<std::path::PathBuf, 
     logical_size.hash(&mut hasher);
     modified_since_epoch.as_secs().hash(&mut hasher);
     modified_since_epoch.subsec_nanos().hash(&mut hasher);
+    metadata.len().hash(&mut hasher);
     let file_name = format!("{:016x}.jpg", hasher.finish());
 
     Ok(cache_dir().join(file_name))
@@ -234,64 +341,7 @@ pub fn thumbnail_cache_dir() -> std::path::PathBuf {
 }
 
 fn write_cache_file(cache_path: &Path, jpeg_bytes: &[u8]) -> Result<(), DecodeImageError> {
-    let cache_dir = cache_path.parent().ok_or_else(|| DecodeImageError {
-        code: "io_error",
-        message: format!(
-            "cache file had no parent directory: {}",
-            cache_path.display()
-        ),
-    })?;
-
-    fs::create_dir_all(cache_dir).map_err(|err| DecodeImageError {
-        code: "io_error",
-        message: format!(
-            "failed to create cache directory {}: {err}",
-            cache_dir.display()
-        ),
-    })?;
-
-    let temp_suffix = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_nanos())
-        .unwrap_or(0);
-    let temp_stem = cache_path
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .unwrap_or("thumb");
-    let temp_path = cache_dir.join(format!(".{}.{}.tmp", temp_stem, temp_suffix,));
-
-    fs::write(&temp_path, jpeg_bytes).map_err(|err| DecodeImageError {
-        code: "io_error",
-        message: format!(
-            "failed to write temp thumbnail {}: {err}",
-            temp_path.display()
-        ),
-    })?;
-
-    if cache_path.exists() {
-        let _ = fs::remove_file(&temp_path);
-        return Ok(());
-    }
-
-    match fs::rename(&temp_path, cache_path) {
-        Ok(()) => Ok(()),
-        Err(err) => {
-            if cache_path.exists() {
-                let _ = fs::remove_file(&temp_path);
-                return Ok(());
-            }
-
-            let _ = fs::remove_file(&temp_path);
-            Err(DecodeImageError {
-                code: "io_error",
-                message: format!(
-                    "failed to promote temp thumbnail {} to {}: {err}",
-                    temp_path.display(),
-                    cache_path.display()
-                ),
-            })
-        }
-    }
+    cache_dirs::write_atomic(cache_path, jpeg_bytes, "thumb")
 }
 
 fn read_cached_dimensions(cache_path: &Path) -> Result<(u32, u32), DecodeImageError> {
@@ -333,12 +383,19 @@ pub mod __test_support {
         image: &DynamicImage,
         width: u32,
         height: u32,
-    ) -> Result<RgbaImage, DecodeImageError> {
+    ) -> Result<DynamicImage, DecodeImageError> {
         resize_image(image, width, height)
     }
 
-    pub fn encode_jpeg_for(image: &RgbaImage) -> Result<Vec<u8>, DecodeImageError> {
+    pub fn encode_jpeg_for(image: &DynamicImage) -> Result<Vec<u8>, DecodeImageError> {
         encode_jpeg(image)
+    }
+
+    pub fn sample_cache_key_for(
+        path: &Path,
+        logical_size: u32,
+    ) -> Result<String, DecodeImageError> {
+        super::sample_cache_key(path, logical_size)
     }
 
     pub fn cache_path_for(

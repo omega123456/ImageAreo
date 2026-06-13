@@ -117,6 +117,9 @@ describe("viewer store", () => {
     expect(viewer.zoom).toBe(4);
     expect(viewer.pan).toEqual({ x: 25, y: 15 });
 
+    // The native path now probes dimensions before decoding, so wait until the
+    // (hanging) decode has actually been invoked before resolving it.
+    await vi.waitFor(() => expect(resolveDecode).toBeDefined());
     resolveDecode?.();
     await openPromise;
 
@@ -148,7 +151,12 @@ describe("viewer store", () => {
     await viewer.openPath("/photos/shot.heic");
 
     expect(ipc.calls("decode_image")).toEqual([
-      { path: "/photos/shot.heic", quality: "display" },
+      {
+        path: "/photos/shot.heic",
+        quality: "display",
+        priority: "currentImage",
+        generation: expect.any(Number),
+      },
     ]);
     expect(viewer.source).toBe("asset:///tmp/imageareo-images/heic.jpg");
     expect(viewer.naturalWidth).toBe(1920);
@@ -162,7 +170,12 @@ describe("viewer store", () => {
   it("openPath() routes JXL through a single display decode_image request", async () => {
     await viewer.openPath("/photos/img.jxl");
     expect(ipc.calls("decode_image")).toEqual([
-      { path: "/photos/img.jxl", quality: "display" },
+      {
+        path: "/photos/img.jxl",
+        quality: "display",
+        priority: "currentImage",
+        generation: expect.any(Number),
+      },
     ]);
   });
 
@@ -544,6 +557,8 @@ describe("viewer store", () => {
     expect(ipc.calls("decode_image")).toContainEqual({
       path: "/photos/raw.dng",
       quality: "enhance",
+      priority: "currentImage",
+      generation: expect.any(Number),
     });
     expect(viewer.enhanced).toBe(true);
     expect(viewer.enhancing).toBe(false);
@@ -701,5 +716,216 @@ describe("viewer store", () => {
     expect(viewer.rotation).toBe(90);
     viewer.load("asset://next.jpg", "next.jpg");
     expect(viewer.rotation).toBe(0);
+  });
+
+  // ---- Phase 6: viewport tier + on-zoom sharpening upgrade ----------------
+
+  function displayDecode(path: string, w: number, h: number) {
+    return { path, width: w, height: h, orientation: 1 };
+  }
+
+  it("openPath() carries the viewport hint on a backend display decode", async () => {
+    viewer.setViewportLongEdge(1000); // dpr 1 → request ~1000 → bucket 1024
+    ipc.override("decode_image", () =>
+      displayDecode("/tmp/imageareo-images/disp.jpg", 4000, 3000),
+    );
+
+    await viewer.openPath("/photos/shot.heic");
+
+    expect(ipc.calls("decode_image")).toEqual([
+      {
+        path: "/photos/shot.heic",
+        quality: "display",
+        priority: "currentImage",
+        generation: expect.any(Number),
+        viewport: { longEdgePx: 1000, dpr: 1 },
+      },
+    ]);
+    expect(viewer.status).toBe("ready");
+  });
+
+  it("openPath() omits the viewport hint when no viewport size is known", async () => {
+    viewer.setViewportLongEdge(0);
+    ipc.override("decode_image", () =>
+      displayDecode("/tmp/imageareo-images/disp.jpg", 100, 100),
+    );
+
+    await viewer.openPath("/photos/shot.heic");
+
+    const call = ipc.calls("decode_image")[0] as Record<string, unknown>;
+    expect(call).not.toHaveProperty("viewport");
+  });
+
+  it("zooming past the viewport tier fetches the 8192 tier and swaps it in", async () => {
+    viewer.setViewportLongEdge(1000); // viewport tier caps at bucket 1024
+    let displayCalls = 0;
+    ipc.override("decode_image", (args) => {
+      const vp = (args as { viewport?: { longEdgePx: number } }).viewport;
+      displayCalls += 1;
+      if (vp && vp.longEdgePx >= 8192) {
+        return displayDecode("/tmp/imageareo-images/sharp.jpg", 8192, 6144);
+      }
+      return displayDecode("/tmp/imageareo-images/disp.jpg", 4000, 3000);
+    });
+
+    await viewer.openPath("/photos/shot.heic");
+    expect(displayCalls).toBe(1);
+
+    // Displayed long edge now far exceeds the 1024 tier cap → upgrade.
+    await viewer.maybeUpgradeTier(5000);
+
+    expect(displayCalls).toBe(2);
+    expect(viewer.source).toBe("asset:///tmp/imageareo-images/sharp.jpg");
+    expect(viewer.sharpening).toBe(false);
+  });
+
+  it("preserves (rescales) zoom across the seamless tier swap instead of re-fitting", async () => {
+    viewer.setViewportLongEdge(1000); // viewport tier caps at bucket 1024
+    ipc.override("decode_image", (args) => {
+      const vp = (args as { viewport?: { longEdgePx: number } }).viewport;
+      if (vp && vp.longEdgePx >= 8192) {
+        return displayDecode("/tmp/imageareo-images/sharp.jpg", 8192, 6144);
+      }
+      return displayDecode("/tmp/imageareo-images/disp.jpg", 4000, 3000);
+    });
+
+    await viewer.openPath("/photos/shot.heic");
+    // The user zooms in on the viewport tier (long edge 4000).
+    viewer.zoom = 2;
+
+    await viewer.maybeUpgradeTier(5000);
+
+    // The 8192-tier (long edge 8192) is swapped in; zoom is rescaled by
+    // 4000/8192 so the on-screen size is unchanged, and the next <img> load is
+    // flagged to preserve the transform (the host must not re-fit).
+    expect(viewer.source).toBe("asset:///tmp/imageareo-images/sharp.jpg");
+    expect(viewer.zoom).toBeCloseTo((2 * 4000) / 8192, 5);
+    expect(viewer.consumePreserveTransform()).toBe(true);
+    // The flag is consumed exactly once.
+    expect(viewer.consumePreserveTransform()).toBe(false);
+  });
+
+  it("clears the preserve-transform flag when a new image is opened", async () => {
+    viewer.setViewportLongEdge(1000);
+    ipc.override("decode_image", (args) => {
+      const vp = (args as { viewport?: { longEdgePx: number } }).viewport;
+      if (vp && vp.longEdgePx >= 8192) {
+        return displayDecode("/tmp/imageareo-images/sharp.jpg", 8192, 6144);
+      }
+      return displayDecode("/tmp/imageareo-images/disp.jpg", 4000, 3000);
+    });
+
+    await viewer.openPath("/photos/shot.heic");
+    viewer.zoom = 2;
+    await viewer.maybeUpgradeTier(5000);
+
+    // A fresh open (e.g. navigation) must drop any pending preserve flag so the
+    // new image fits normally.
+    await viewer.openPath("/photos/other.heic");
+    expect(viewer.consumePreserveTransform()).toBe(false);
+  });
+
+  it("a zoom-out (displayed edge within the tier) does not trigger an upgrade", async () => {
+    viewer.setViewportLongEdge(4000); // bucket 4096
+    let displayCalls = 0;
+    ipc.override("decode_image", () => {
+      displayCalls += 1;
+      return displayDecode("/tmp/imageareo-images/disp.jpg", 4000, 3000);
+    });
+
+    await viewer.openPath("/photos/shot.heic");
+    expect(displayCalls).toBe(1);
+
+    await viewer.maybeUpgradeTier(1000); // below the 4096 tier cap
+
+    expect(displayCalls).toBe(1);
+    expect(viewer.sharpening).toBe(false);
+  });
+
+  it("does not upgrade again once the max (8192) tier is reached", async () => {
+    viewer.setViewportLongEdge(9000); // clamps to bucket 8192 on open
+    let displayCalls = 0;
+    ipc.override("decode_image", () => {
+      displayCalls += 1;
+      return displayDecode("/tmp/imageareo-images/disp.jpg", 8192, 6144);
+    });
+
+    await viewer.openPath("/photos/shot.heic");
+    expect(displayCalls).toBe(1);
+
+    await viewer.maybeUpgradeTier(20000);
+
+    expect(displayCalls).toBe(1);
+  });
+
+  it("does not upgrade a native direct image (no current tier)", async () => {
+    // Small native image renders directly (no backend decode, tier = 0).
+    await viewer.openPath("/photos/photo.jpg");
+    const before = ipc.calls("decode_image").length;
+
+    await viewer.maybeUpgradeTier(10000);
+
+    expect(ipc.calls("decode_image")).toHaveLength(before);
+    expect(viewer.sharpening).toBe(false);
+  });
+
+  it("re-attaches to an in-flight enhance on navigate-back and applies its result", async () => {
+    await openRawToDisplay();
+
+    // The enhance decode returns a single shared pending promise, simulating the
+    // backend single-flight: a re-issued request joins the same running job.
+    let resolveEnhance: ((v: unknown) => void) | undefined;
+    const enhanceJob = new Promise((resolve) => {
+      resolveEnhance = resolve;
+    });
+    let enhanceCalls = 0;
+    ipc.override("decode_image", (args) => {
+      const quality = (args as { quality?: string }).quality;
+      if (quality === "enhance") {
+        enhanceCalls += 1;
+        return enhanceJob;
+      }
+      if (quality === "preview") {
+        return displayDecode("/tmp/imageareo-images/raw-preview.jpg", 640, 480);
+      }
+      return displayDecode("/tmp/imageareo-images/raw-display.jpg", 4000, 3000);
+    });
+
+    const pending = viewer.requestEnhance();
+    expect(viewer.isInFlight("/photos/raw.dng")).toBe(true);
+    expect(viewer.enhancing).toBe(true);
+
+    // Navigate away (bumps the open id); the enhance keeps running in background.
+    await viewer.openPath("/photos/other.tiff");
+    expect(viewer.enhancing).toBe(false);
+
+    // Navigate back while the enhance is still running: the RAW upgrade re-attaches
+    // to it under the new open id, so the spinner re-shows.
+    await viewer.openPath("/photos/raw.dng");
+    await vi.waitFor(() => expect(viewer.enhancing).toBe(true));
+
+    // The frontend re-issued the request, but the backend single-flight joins the
+    // same decode (here: the same shared promise) — no duplicate heavy demosaic.
+    expect(enhanceCalls).toBe(2);
+
+    // Completing the shared job applies the enhanced image and clears the spinner.
+    resolveEnhance?.(displayDecode("/tmp/imageareo-images/enh.jpg", 6000, 4000));
+    await pending;
+    await vi.waitFor(() => expect(viewer.enhanced).toBe(true));
+    expect(viewer.source).toBe("asset:///tmp/imageareo-images/enh.jpg");
+    expect(viewer.enhancing).toBe(false);
+  });
+
+  it("reset() clears the sharpening flag", async () => {
+    viewer.setViewportLongEdge(1000);
+    ipc.override("decode_image", () =>
+      displayDecode("/tmp/imageareo-images/disp.jpg", 4000, 3000),
+    );
+    await viewer.openPath("/photos/shot.heic");
+    viewer.sharpening = true;
+
+    viewer.reset();
+
+    expect(viewer.sharpening).toBe(false);
   });
 });

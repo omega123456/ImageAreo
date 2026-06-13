@@ -26,6 +26,8 @@
   const RENDER_BUFFER = 3;
   /** Active thumb scale factor (matches `scale-125` on the active thumb). */
   const ACTIVE_SCALE = 1.25;
+  /** Prefetch band: ±this many thumbnails around the current index. */
+  const PREFETCH_BAND = 50;
 
   const images = $derived(folder.images);
   const thumbnailSize = $derived(settings.densityDimensions.thumbnailSize);
@@ -156,16 +158,35 @@
     });
   });
 
-  // Prefetch every folder thumbnail at the active density pixel size so the
-  // windowed slice fills in quickly as the user scrolls.
+  // Identity of the last folder we prefetched for. A change means a folder
+  // switch, which must reset the thumbnail cache under a new generation token
+  // (so a slow prior-folder thumbnail cannot repopulate it after the clear).
+  let lastFolderImages: typeof images | null = null;
+
+  // Prefetch only the band of thumbnails around the current index (±PREFETCH_BAND)
+  // at the active density pixel size, rather than the whole folder. The band
+  // re-prefetches as the selection (window) moves; thumbnails outside the band
+  // load lazily on scroll via FilmstripThumb's own request.
   $effect(() => {
-    const paths = images.map((entry) => entry.path);
+    const folderImages = images;
+    const paths = folderImages.map((entry) => entry.path);
     const requestedSize = thumbnailSize;
+    const center = folder.currentIndex;
     let cancelled = false;
+
+    if (folderImages !== lastFolderImages) {
+      lastFolderImages = folderImages;
+      galleryThumbnails.newGeneration();
+    }
 
     queueMicrotask(() => {
       if (!cancelled) {
-        galleryThumbnails.prefetchFolder(paths, requestedSize);
+        galleryThumbnails.prefetchWindow(
+          paths,
+          center,
+          requestedSize,
+          PREFETCH_BAND,
+        );
       }
     });
 

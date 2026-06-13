@@ -15,7 +15,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::UNIX_EPOCH;
 
 use ::image::ImageReader;
 
@@ -28,6 +28,11 @@ use crate::image::DecodeImageError;
 pub enum CacheVariant {
     /// Cheapest, instant-paint image — always JPEG.
     Preview,
+    /// Viewport-sized initial display image, capped to a bucketed
+    /// viewport×DPR edge — JPEG (opaque) or PNG (has alpha). Keyed distinctly
+    /// from `Display` (which is the full 8192 on-zoom tier) by both this tag
+    /// and the bucketed cap-in-key, so the two tiers never collide.
+    Viewport,
     /// Default viewing image — JPEG (opaque) or PNG (has alpha).
     Display,
     /// User-triggered "Enhance" image (RAW demosaic, capped) — JPEG (opaque) or
@@ -43,6 +48,7 @@ impl CacheVariant {
             CacheVariant::Preview => 0,
             CacheVariant::Display => 1,
             CacheVariant::Enhance => 2,
+            CacheVariant::Viewport => 3,
         }
     }
 
@@ -54,6 +60,7 @@ impl CacheVariant {
             CacheVariant::Preview => &["jpg"],
             CacheVariant::Display => &["jpg", "png"],
             CacheVariant::Enhance => &["jpg", "png"],
+            CacheVariant::Viewport => &["jpg", "png"],
         }
     }
 }
@@ -144,58 +151,7 @@ pub fn write(
 }
 
 fn write_cache_file(cache_path: &Path, bytes: &[u8]) -> Result<(), DecodeImageError> {
-    let dir = cache_path.parent().ok_or_else(|| {
-        DecodeImageError::io(format!(
-            "cache file had no parent directory: {}",
-            cache_path.display()
-        ))
-    })?;
-
-    fs::create_dir_all(dir).map_err(|err| {
-        DecodeImageError::io(format!(
-            "failed to create cache directory {}: {err}",
-            dir.display()
-        ))
-    })?;
-
-    let temp_suffix = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_nanos())
-        .unwrap_or(0);
-    let temp_stem = cache_path
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .unwrap_or("image");
-    let temp_path = dir.join(format!(".{temp_stem}.{temp_suffix}.tmp"));
-
-    fs::write(&temp_path, bytes).map_err(|err| {
-        DecodeImageError::io(format!(
-            "failed to write temp image {}: {err}",
-            temp_path.display()
-        ))
-    })?;
-
-    if cache_path.exists() {
-        let _ = fs::remove_file(&temp_path);
-        return Ok(());
-    }
-
-    match fs::rename(&temp_path, cache_path) {
-        Ok(()) => Ok(()),
-        Err(err) => {
-            if cache_path.exists() {
-                let _ = fs::remove_file(&temp_path);
-                return Ok(());
-            }
-
-            let _ = fs::remove_file(&temp_path);
-            Err(DecodeImageError::io(format!(
-                "failed to promote temp image {} to {}: {err}",
-                temp_path.display(),
-                cache_path.display()
-            )))
-        }
-    }
+    cache_dirs::write_atomic(cache_path, bytes, "image")
 }
 
 /// Read back the pixel dimensions of a written cache file without fully decoding

@@ -6,9 +6,11 @@ use std::path::{Path, PathBuf};
 use ::image::{self as image_rs, DynamicImage, GenericImageView, ImageFormat, Rgba, RgbaImage};
 use common::TempImageDir;
 use imageareo_lib::commands;
+use imageareo_lib::scheduler::Scheduler;
+use imageareo_lib::image::disk_cache::CacheVariant;
 use imageareo_lib::image::{
-    self, DecodeImageError, DecodeIntent, ImageFormatSupport, DISPLAY_LONG_EDGE_CAP,
-    PREVIEW_LONG_EDGE_CAP,
+    self, DecodeImageError, DecodeIntent, ImageFormatSupport, ViewportHint, DISPLAY_LONG_EDGE_CAP,
+    PREVIEW_LONG_EDGE_CAP, VIEWPORT_TIER_BUCKETS, VIEWPORT_TIER_MIN_EDGE,
 };
 use rawler::decoders::{BlackLevel, CFAConfig, Camera, RawPhotometricInterpretation, WhiteLevel};
 use rawler::dng::writer::DngWriter;
@@ -288,7 +290,8 @@ async fn decode_image_command_returns_a_cache_file_path() {
     let _cache = common::CacheGuard::new();
     let path = fixture_path("sample.heic");
 
-    let decoded = commands::decode_image(path_string(&path), None)
+    let scheduler = Scheduler::new();
+    let decoded = commands::decode_image_via(&scheduler, path_string(&path), None, None, None, None)
         .await
         .expect("command should succeed");
 
@@ -310,7 +313,8 @@ async fn decode_image_command_rejects_native_formats() {
     let path = dir.path().join("native.png");
     write_dynamic_image(&path, &fixture_image(1, 1), ImageFormat::Png);
 
-    let error = commands::decode_image(path_string(&path), None)
+    let scheduler = Scheduler::new();
+    let error = commands::decode_image_via(&scheduler, path_string(&path), None, None, None, None)
         .await
         .expect_err("native decode should be rejected");
 
@@ -324,15 +328,47 @@ async fn decode_image_command_returns_structured_errors_for_corrupt_and_unsuppor
     let corrupt_heic = dir.write("broken.heic", b"not a heic");
     let unsupported = dir.write("broken.txt", b"plain text");
 
-    let corrupt_error = commands::decode_image(path_string(&corrupt_heic), None)
-        .await
-        .expect_err("corrupt file should fail");
-    let unsupported_error = commands::decode_image(path_string(&unsupported), None)
-        .await
-        .expect_err("unsupported file should fail");
+    let scheduler = Scheduler::new();
+    let corrupt_error =
+        commands::decode_image_via(&scheduler, path_string(&corrupt_heic), None, None, None, None)
+            .await
+            .expect_err("corrupt file should fail");
+    let unsupported_error =
+        commands::decode_image_via(&scheduler, path_string(&unsupported), None, None, None, None)
+            .await
+            .expect_err("unsupported file should fail");
 
     assert_decode_error(corrupt_error, "decode_failed");
     assert_decode_error(unsupported_error, "unsupported_format");
+}
+
+#[tokio::test]
+async fn transient_decode_failure_is_not_cached_and_can_be_retried() {
+    // FIX 2 (command-level): a transient decode failure (here, a file that is
+    // briefly corrupt — e.g. mid-write) must NOT be memoized by the single-flight
+    // cache. Once the file is valid, the very next decode for the same path must
+    // succeed instead of returning the stuck cached error.
+    let dir = TempImageDir::new();
+    let path = dir.path().join("mid-write.tiff");
+    // First state: corrupt bytes at the path → decode fails.
+    std::fs::write(&path, b"not a valid tiff yet").expect("write corrupt file");
+
+    let scheduler = Scheduler::new();
+    let first =
+        commands::decode_image_via(&scheduler, path_string(&path), None, None, None, None).await;
+    assert!(
+        first.is_err(),
+        "a corrupt file must fail the first decode attempt"
+    );
+
+    // Second state: the same path now holds a valid backend image.
+    write_dynamic_image(&path, &fixture_image(24, 24), ImageFormat::Tiff);
+
+    let retried =
+        commands::decode_image_via(&scheduler, path_string(&path), None, None, None, None)
+            .await
+            .expect("retry after the file became valid must succeed (error was not cached)");
+    assert_eq!((retried.width, retried.height), (24, 24));
 }
 
 #[test]
@@ -560,6 +596,140 @@ fn opaque_display_images_encode_as_jpeg_and_alpha_as_png() {
     );
 }
 
+// ---- Phase 7: opaque/alpha resize+encode split ----------------------------
+
+#[test]
+fn resize_target_caps_or_skips() {
+    use image::__test_support::resize_target_for;
+    // Within the cap → no resize.
+    assert_eq!(resize_target_for(100, 80, 200), None);
+    // Empty source → no resize.
+    assert_eq!(resize_target_for(0, 0, 200), None);
+    // Landscape: long edge (width) capped, height scaled proportionally.
+    assert_eq!(resize_target_for(4000, 2000, 1000), Some((1000, 500)));
+    // Portrait: long edge (height) capped, width scaled.
+    assert_eq!(resize_target_for(1000, 4000, 1000), Some((250, 1000)));
+}
+
+#[test]
+fn is_opaque_source_reads_color_type_not_pixels() {
+    use image::__test_support::is_opaque_source_for;
+    // RGB8 has no alpha channel → opaque-typed.
+    let rgb = DynamicImage::ImageRgb8(image_rs::RgbImage::from_pixel(2, 2, image_rs::Rgb([1, 2, 3])));
+    assert!(is_opaque_source_for(&rgb));
+
+    // A fully-opaque RGBA8 (every alpha == 255) is still alpha-*typed*: the
+    // discriminator reads the color type, not the pixels, so it is NOT opaque.
+    let opaque_rgba = DynamicImage::ImageRgba8(RgbaImage::from_pixel(2, 2, Rgba([1, 2, 3, 255])));
+    assert!(!is_opaque_source_for(&opaque_rgba));
+}
+
+#[test]
+fn opaque_typed_source_resizes_via_the_rgb_path_with_no_alpha_plane() {
+    // An opaque-typed (RGB8) source larger than the cap is resized through the
+    // RGB path and stays RGB8 — no alpha plane is ever allocated.
+    use image::__test_support::{downscale_owned_to_cap_for, downscale_to_cap_for};
+    let large =
+        DynamicImage::ImageRgb8(image_rs::RgbImage::from_pixel(4000, 2000, image_rs::Rgb([9, 9, 9])));
+
+    let borrowed = downscale_to_cap_for(&large, 1000).expect("borrowed rgb downscale");
+    assert!(matches!(borrowed, DynamicImage::ImageRgb8(_)));
+    assert_eq!(borrowed.dimensions(), (1000, 500));
+    assert!(!borrowed.color().has_alpha(), "rgb path must not add alpha");
+
+    let owned = downscale_owned_to_cap_for(large, 1000).expect("owned rgb downscale");
+    assert!(matches!(owned, DynamicImage::ImageRgb8(_)));
+    assert_eq!(owned.dimensions(), (1000, 500));
+}
+
+#[test]
+fn alpha_typed_source_resizes_via_the_rgba_path() {
+    // An alpha-typed (RGBA8) source larger than the cap stays RGBA8 through the
+    // resize, preserving the alpha channel for the post-resize transparency scan.
+    use image::__test_support::{downscale_owned_to_cap_for, downscale_to_cap_for};
+    let large =
+        DynamicImage::ImageRgba8(RgbaImage::from_pixel(4000, 2000, Rgba([9, 9, 9, 128])));
+
+    let borrowed = downscale_to_cap_for(&large, 1000).expect("borrowed rgba downscale");
+    assert!(matches!(borrowed, DynamicImage::ImageRgba8(_)));
+    assert_eq!(borrowed.dimensions(), (1000, 500));
+    assert!(borrowed.color().has_alpha(), "rgba path must keep alpha");
+
+    let owned = downscale_owned_to_cap_for(large, 1000).expect("owned rgba downscale");
+    assert!(matches!(owned, DynamicImage::ImageRgba8(_)));
+}
+
+#[test]
+fn opaque_typed_display_decode_yields_a_jpeg_via_the_rgb_path() {
+    // End-to-end: an opaque-typed (RGB8) BMP source larger than the cap is
+    // resized as RGB and encoded as JPEG (no PNG, no alpha allocation), and the
+    // on-disk derivative is opaque RGB.
+    let dir = TempImageDir::new();
+    let path = dir.path().join("opaque-large.bmp");
+    write_dynamic_image(
+        &path,
+        &DynamicImage::ImageRgb8(image_rs::RgbImage::from_pixel(3000, 2000, image_rs::Rgb([40, 60, 80]))),
+        ImageFormat::Bmp,
+    );
+
+    let decoded = image::decode_to_cache(&path, DecodeIntent::Display).expect("opaque display");
+
+    assert_eq!(
+        decoded.path.extension().and_then(|ext| ext.to_str()),
+        Some("jpg"),
+        "opaque-typed source must encode as JPEG via the RGB path"
+    );
+    let on_disk = image_rs::open(&decoded.path).expect("cache file should decode");
+    assert!(
+        !on_disk.color().has_alpha(),
+        "the RGB path must not produce an alpha plane"
+    );
+    assert_eq!(on_disk.dimensions().0.max(on_disk.dimensions().1), 3000);
+}
+
+#[test]
+fn alpha_typed_transparent_display_decode_yields_a_png_via_the_rgba_path() {
+    // An alpha-typed source with real transparency is resized via the RGBA path
+    // and encoded as PNG (the transparency survives the resize). PNG is native,
+    // so route through a backend format (TIFF).
+    let dir = TempImageDir::new();
+    let path = dir.path().join("alpha-large.tiff");
+    let mut alpha = RgbaImage::from_pixel(3000, 2000, Rgba([40, 60, 80, 255]));
+    alpha.put_pixel(0, 0, Rgba([40, 60, 80, 0]));
+    write_dynamic_image(&path, &DynamicImage::ImageRgba8(alpha), ImageFormat::Tiff);
+
+    let decoded = image::decode_to_cache(&path, DecodeIntent::Display).expect("alpha display");
+
+    assert_eq!(
+        decoded.path.extension().and_then(|ext| ext.to_str()),
+        Some("png"),
+        "transparent alpha-typed source must encode as PNG via the RGBA path"
+    );
+    let on_disk = image_rs::open(&decoded.path).expect("cache file should decode");
+    assert!(on_disk.color().has_alpha());
+}
+
+#[test]
+fn alpha_typed_opaque_content_display_decode_still_works() {
+    // An alpha-typed source whose content is fully opaque (every alpha == 255)
+    // keeps the RGBA path (channel-presence discriminator) and, because the
+    // post-resize scan finds no real transparency, encodes as JPEG.
+    let dir = TempImageDir::new();
+    let path = dir.path().join("opaque-alpha-large.tiff");
+    let opaque_rgba = RgbaImage::from_pixel(3000, 2000, Rgba([40, 60, 80, 255]));
+    write_dynamic_image(&path, &DynamicImage::ImageRgba8(opaque_rgba), ImageFormat::Tiff);
+
+    let decoded = image::decode_to_cache(&path, DecodeIntent::Display).expect("opaque-alpha display");
+
+    assert_eq!(
+        decoded.path.extension().and_then(|ext| ext.to_str()),
+        Some("jpg"),
+        "opaque-content alpha-typed source still works and encodes as JPEG"
+    );
+    let on_disk = image_rs::open(&decoded.path).expect("cache file should decode");
+    assert_eq!(on_disk.dimensions().0.max(on_disk.dimensions().1), 3000);
+}
+
 #[test]
 fn load_supported_image_path_decodes_backend_formats() {
     // The NeedsBackend branch routes through the backend decoder (here HEIC).
@@ -624,21 +794,31 @@ async fn peek_decoded_image_returns_cached_only_after_a_decode() {
     let path = dir.path().join("peek.tiff");
     write_dynamic_image(&path, &fixture_image(20, 16), ImageFormat::Tiff);
 
+    let scheduler = Scheduler::new();
     // Nothing cached yet → null.
-    let absent = commands::peek_decoded_image(path_string(&path), DecodeIntent::Display)
-        .await
-        .expect("peek should succeed");
+    let absent =
+        commands::peek_decoded_image(path_string(&path), DecodeIntent::Display, None)
+            .await
+            .expect("peek should succeed");
     assert!(absent.is_none());
 
     // Decode populates the cache; peek now returns the cached transport shape
     // without decoding again.
-    let decoded = commands::decode_image(path_string(&path), Some(DecodeIntent::Display))
-        .await
-        .expect("decode should succeed");
-    let peeked = commands::peek_decoded_image(path_string(&path), DecodeIntent::Display)
-        .await
-        .expect("peek should succeed")
-        .expect("cache hit expected");
+    let decoded = commands::decode_image_via(
+        &scheduler,
+        path_string(&path),
+        Some(DecodeIntent::Display),
+        None,
+        None,
+        None,
+    )
+    .await
+    .expect("decode should succeed");
+    let peeked =
+        commands::peek_decoded_image(path_string(&path), DecodeIntent::Display, None)
+            .await
+            .expect("peek should succeed")
+            .expect("cache hit expected");
 
     assert_eq!(peeked.path, decoded.path);
     assert_eq!(
@@ -716,6 +896,226 @@ fn error_constructors_set_expected_codes() {
     assert_eq!(io_error("x").code, "io_error");
     assert_eq!(decode_error("x").code, "decode_failed");
     assert_eq!(encode_error("x").code, "encode_failed");
+}
+
+// ---- Phase 5b: viewport-aware display tier --------------------------------
+
+#[test]
+fn viewport_tier_cap_buckets_and_clamps() {
+    // Below the floor → floor bucket.
+    assert_eq!(
+        image::viewport_tier_cap(ViewportHint {
+            long_edge_px: 200.0,
+            dpr: 1.0,
+        }),
+        VIEWPORT_TIER_MIN_EDGE
+    );
+
+    // Mid-range rounds up to the smallest covering bucket: 1390×1.0 → 1536.
+    assert_eq!(
+        image::viewport_tier_cap(ViewportHint {
+            long_edge_px: 1390.0,
+            dpr: 1.0,
+        }),
+        1536
+    );
+
+    // A value exactly on a bucket stays on that bucket.
+    assert_eq!(
+        image::viewport_tier_cap(ViewportHint {
+            long_edge_px: 2048.0,
+            dpr: 1.0,
+        }),
+        2048
+    );
+
+    // DPR multiplies: 1500×2.0 = 3000 → 3072 bucket.
+    assert_eq!(
+        image::viewport_tier_cap(ViewportHint {
+            long_edge_px: 1500.0,
+            dpr: 2.0,
+        }),
+        3072
+    );
+
+    // Above the ceiling clamps to the top bucket (== DISPLAY_LONG_EDGE_CAP).
+    assert_eq!(
+        image::viewport_tier_cap(ViewportHint {
+            long_edge_px: 10000.0,
+            dpr: 3.0,
+        }),
+        DISPLAY_LONG_EDGE_CAP
+    );
+    assert_eq!(*VIEWPORT_TIER_BUCKETS.last().unwrap(), DISPLAY_LONG_EDGE_CAP);
+
+    // Non-finite / non-positive inputs fall back to the floor bucket.
+    assert_eq!(
+        image::viewport_tier_cap(ViewportHint {
+            long_edge_px: f64::NAN,
+            dpr: 2.0,
+        }),
+        VIEWPORT_TIER_MIN_EDGE
+    );
+    assert_eq!(
+        image::viewport_tier_cap(ViewportHint {
+            long_edge_px: 0.0,
+            dpr: 2.0,
+        }),
+        VIEWPORT_TIER_MIN_EDGE
+    );
+}
+
+#[test]
+fn display_tier_selects_viewport_only_for_display_with_hint() {
+    use image::__test_support::display_tier_for;
+    let hint = ViewportHint {
+        long_edge_px: 1280.0,
+        dpr: 1.0,
+    };
+
+    // Display + hint → bucketed Viewport tier.
+    let (variant, cap) = display_tier_for(DecodeIntent::Display, Some(hint));
+    assert_eq!(variant, CacheVariant::Viewport);
+    assert_eq!(cap, 1536);
+
+    // Display without a hint → the 8192 Display tier (unchanged behaviour).
+    let (variant, cap) = display_tier_for(DecodeIntent::Display, None);
+    assert_eq!(variant, CacheVariant::Display);
+    assert_eq!(cap, DISPLAY_LONG_EDGE_CAP);
+
+    // The hint is ignored for non-Display intents.
+    let (variant, _) = display_tier_for(DecodeIntent::Preview, Some(hint));
+    assert_eq!(variant, CacheVariant::Preview);
+    let (variant, _) = display_tier_for(DecodeIntent::Enhance, Some(hint));
+    assert_eq!(variant, CacheVariant::Enhance);
+}
+
+#[test]
+fn viewport_decode_produces_a_smaller_derivative_keyed_distinctly() {
+    // A large source decoded with a small viewport hint yields a derivative
+    // capped to the bucket (smaller than 8192) and written under the Viewport
+    // variant — distinct from the full 8192 Display tier of the same source.
+    let dir = TempImageDir::new();
+    let path = dir.path().join("large.tiff");
+    write_dynamic_image(&path, &fixture_image(6000, 4000), ImageFormat::Tiff);
+
+    let hint = ViewportHint {
+        long_edge_px: 1000.0,
+        dpr: 1.0,
+    };
+    let viewport = image::decode_to_cache_viewport(&path, DecodeIntent::Display, Some(hint))
+        .expect("viewport decode should succeed");
+
+    // 1000×1.0 → 1024 bucket; the long edge is capped to it.
+    assert_eq!(viewport.width.max(viewport.height), 1024);
+    assert!(viewport.width.max(viewport.height) < DISPLAY_LONG_EDGE_CAP);
+
+    // The viewport derivative is keyed under the Viewport variant + 1024 cap.
+    let viewport_key = image::disk_cache::cache_path_for(
+        &path,
+        CacheVariant::Viewport,
+        1024,
+        viewport
+            .path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("jpg"),
+    )
+    .unwrap();
+    assert_eq!(viewport.path, viewport_key);
+}
+
+#[test]
+fn viewport_and_display_tiers_coexist_without_clobbering() {
+    // Requesting the viewport tier then the 8192 tier (and vice versa) leaves
+    // two distinct cache files on disk.
+    let dir = TempImageDir::new();
+    let path = dir.path().join("coexist.tiff");
+    write_dynamic_image(&path, &fixture_image(5000, 5000), ImageFormat::Tiff);
+
+    let hint = ViewportHint {
+        long_edge_px: 1500.0,
+        dpr: 1.0,
+    };
+    let viewport = image::decode_to_cache_viewport(&path, DecodeIntent::Display, Some(hint))
+        .expect("viewport decode");
+    let display = image::decode_to_cache_viewport(&path, DecodeIntent::Display, None)
+        .expect("display decode");
+
+    assert_ne!(viewport.path, display.path);
+    assert!(viewport.path.exists(), "viewport file should remain");
+    assert!(display.path.exists(), "display file should remain");
+    assert_eq!(viewport.width.max(viewport.height), 1536);
+    assert_eq!(display.width.max(display.height), 5000);
+}
+
+#[test]
+fn near_identical_viewports_share_a_bucketed_cache_hit() {
+    // Two slightly different window sizes that bucket to the same cap resolve to
+    // the same cache file — so resizing the window a few px does not refragment
+    // the cache.
+    let dir = TempImageDir::new();
+    let path = dir.path().join("bucketed.tiff");
+    write_dynamic_image(&path, &fixture_image(4000, 3000), ImageFormat::Tiff);
+
+    let first = image::decode_to_cache_viewport(
+        &path,
+        DecodeIntent::Display,
+        Some(ViewportHint {
+            long_edge_px: 1300.0,
+            dpr: 1.0,
+        }),
+    )
+    .expect("first viewport decode");
+    let second = image::decode_to_cache_viewport(
+        &path,
+        DecodeIntent::Display,
+        Some(ViewportHint {
+            long_edge_px: 1420.0,
+            dpr: 1.0,
+        }),
+    )
+    .expect("second viewport decode");
+
+    // Both 1300 and 1420 bucket to 1536 → identical key → cache hit.
+    assert_eq!(first.path, second.path);
+    assert_eq!(first.width.max(first.height), 1536);
+}
+
+#[test]
+fn viewport_tier_files_live_in_the_image_cache_dir_and_are_swept_by_age() {
+    // AC#4: the viewport tier reuses the existing image cache dir (no new
+    // wiring), so the unchanged age-only sweep already covers it. Assert the
+    // existing sweep behaviour against a viewport-tier file.
+    use imageareo_lib::image::cache_maintenance::{sweep_dir, EVICTION_WINDOW};
+    use std::time::{Duration, SystemTime};
+
+    let _cache = common::CacheGuard::new();
+    let dir = TempImageDir::new();
+    let path = dir.path().join("aged.tiff");
+    write_dynamic_image(&path, &fixture_image(3000, 2000), ImageFormat::Tiff);
+
+    let viewport = image::decode_to_cache_viewport(
+        &path,
+        DecodeIntent::Display,
+        Some(ViewportHint {
+            long_edge_px: 900.0,
+            dpr: 1.0,
+        }),
+    )
+    .expect("viewport decode");
+
+    assert!(viewport.path.starts_with(image::disk_cache::cache_dir()));
+    assert!(viewport.path.exists());
+
+    // A `now` far in the future makes the freshly-written file older than the
+    // eviction window, so the standard sweep deletes it — proving the viewport
+    // tier is covered by the existing maintenance pass with no new wiring.
+    let future = SystemTime::now() + EVICTION_WINDOW + Duration::from_secs(60);
+    let deleted = sweep_dir(&image::disk_cache::cache_dir(), future, EVICTION_WINDOW);
+
+    assert!(deleted >= 1, "the aged viewport-tier file should be swept");
+    assert!(!viewport.path.exists(), "swept file should be gone");
 }
 
 fn assert_decode_error(error: DecodeImageError, expected_code: &str) {

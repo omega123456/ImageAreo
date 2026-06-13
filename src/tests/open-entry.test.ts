@@ -170,6 +170,74 @@ describe("goNext / goPrev", () => {
     expect(viewer.path).toBe("/photos/a.jpg");
     expect(viewer.status).toBe("ready");
   });
+
+  // AC #5 (end-to-end, real navigation callers): start a heavy enhance on a RAW,
+  // navigate AWAY via goNext, then navigate BACK via goPrev while the enhance is
+  // still in flight. The `enhancing` indicator must re-show, and the backend
+  // single-flight must not be asked for a second enhance decode.
+  it("re-attaches an in-flight enhance after navigating away and back, and applies it", async () => {
+    ipc.override("scan_folder", () => [
+      { path: "/photos/raw.dng", name: "raw.dng", modified: 1 },
+      { path: "/photos/b.jpg", name: "b.jpg", modified: 2 },
+    ]);
+    // RAW preview/display return concrete decodes; the enhance decode is a single
+    // shared pending promise — simulating the backend single-flight, so a
+    // re-issued enhance request joins the same running job.
+    let resolveEnhance: ((v: unknown) => void) | undefined;
+    const enhanceJob = new Promise((resolve) => {
+      resolveEnhance = resolve;
+    });
+    let enhanceCalls = 0;
+    ipc.override("decode_image", (args) => {
+      const quality = (args as { quality?: string }).quality;
+      if (quality === "enhance") {
+        enhanceCalls += 1;
+        return enhanceJob;
+      }
+      return {
+        path: "/tmp/imageareo-images/raw-display.jpg",
+        width: 6000,
+        height: 4000,
+        orientation: 1,
+      };
+    });
+    ipc.override("peek_decoded_image", () => null);
+
+    await openPath("/photos/raw.dng");
+    await vi.waitFor(() => expect(viewer.enhanceAvailable).toBe(true));
+
+    const pending = viewer.requestEnhance();
+    expect(viewer.enhancing).toBe(true);
+    expect(viewer.isInFlight("/photos/raw.dng")).toBe(true);
+    expect(enhanceCalls).toBe(1);
+
+    // Navigate AWAY (b.jpg is native, so openPath resets enhance state).
+    await goNext();
+    expect(viewer.path).toBe("/photos/b.jpg");
+    expect(viewer.enhancing).toBe(false);
+
+    // Navigate BACK while the enhance for raw.dng is still running: the RAW
+    // upgrade re-attaches to it under the new open id, re-showing the spinner.
+    await goPrev();
+    expect(viewer.path).toBe("/photos/raw.dng");
+    await vi.waitFor(() => expect(viewer.enhancing).toBe(true));
+
+    // The frontend re-issued the request; the backend single-flight joins the
+    // same decode (here the same shared promise) — no duplicate heavy demosaic.
+    expect(enhanceCalls).toBe(2);
+
+    // Completing the shared job applies the enhanced image and clears the spinner.
+    resolveEnhance?.({
+      path: "/tmp/imageareo-images/raw-enhanced.jpg",
+      width: 6000,
+      height: 4000,
+      orientation: 1,
+    });
+    await pending;
+    await vi.waitFor(() => expect(viewer.enhanced).toBe(true));
+    expect(viewer.source).toBe("asset:///tmp/imageareo-images/raw-enhanced.jpg");
+    expect(viewer.enhancing).toBe(false);
+  });
 });
 
 describe("pathFromDropPayload", () => {

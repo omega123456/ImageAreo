@@ -9,6 +9,7 @@
   import UpdateToast from "./lib/components/UpdateToast.svelte";
   import Filmstrip from "./lib/components/Filmstrip.svelte";
   import EnhanceControl from "./lib/components/EnhanceControl.svelte";
+  import SharpenIndicator from "./lib/components/SharpenIndicator.svelte";
   import { updater } from "./lib/stores/updater.svelte";
   import { galleryUi } from "./lib/stores/gallery-ui.svelte";
   import { chrome } from "./lib/stores/chrome.svelte";
@@ -29,6 +30,7 @@
   let controller = $state<ZoomPanController | null>(null);
   let imageViewer = $state<ImageViewer | null>(null);
   let enhanceBounds = $state<DOMRect | null>(null);
+  let sharpenBounds = $state<DOMRect | null>(null);
   let toolbarHost = $state<HTMLDivElement | null>(null);
   let toolbarBounds = $state<DOMRect | null>(null);
 
@@ -239,6 +241,7 @@
       bottomInset={fitBottomInset}
       enhanceBounds={enhanceBounds}
       toolbarBounds={toolbarBounds}
+      sharpenBounds={sharpenBounds}
     />
 
     {#if viewer.status !== "idle"}
@@ -301,6 +304,15 @@
           <EnhanceControl onBoundsChange={(rect) => (enhanceBounds = rect)} />
         </div>
       {/if}
+    </div>
+
+    <!--
+      Bottom-right status zone: the debounced "Sharpening…" pill, stacked just
+      above the ZoomHud readout so the two never overlap. The pill is
+      pointer-transparent throughout and manages its own debounced visibility.
+    -->
+    <div class="pointer-events-none absolute right-3 bottom-12 z-30">
+      <SharpenIndicator onBoundsChange={(rect) => (sharpenBounds = rect)} />
     </div>
   </main>
 </div>

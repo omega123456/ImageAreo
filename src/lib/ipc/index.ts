@@ -9,6 +9,8 @@ import {
   type GenerateThumbnailRequest,
   type ImageEntry,
   type OkResponse,
+  type ProbedImage,
+  type ProbeImageRequest,
   type RevealInFileManagerRequest,
   type SampleImageRequest,
   type ScanFolderRequest,
@@ -48,6 +50,18 @@ export function setDefaultAssociations(
 export function scanFolder(request: ScanFolderRequest): Promise<ImageEntry[]> {
   return invokeCommand<ImageEntry[]>(
     IPC_COMMANDS.scanFolder,
+    request as unknown as InvokeArgs,
+  );
+}
+
+/**
+ * Read header-only dimensions, animation flag, and the over-ceiling decision
+ * for an image without performing a full pixel decode. Drives native-format
+ * routing-by-dimension and the too-large short-circuit in the viewer.
+ */
+export function probeImage(request: ProbeImageRequest): Promise<ProbedImage> {
+  return invokeCommand<ProbedImage>(
+    IPC_COMMANDS.probeImage,
     request as unknown as InvokeArgs,
   );
 }

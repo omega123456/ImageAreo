@@ -28,6 +28,16 @@ function galleryThumbnailConcurrency(): number {
 
 export const GALLERY_THUMBNAIL_MAX_CONCURRENT = galleryThumbnailConcurrency();
 
+/**
+ * Maximum number of resolved (ready/error) entries retained in the session
+ * cache. When exceeded, the least-recently-used resolved entries are evicted.
+ * Pending/in-flight entries are never evicted (their completion would re-insert
+ * and race the generation guard), so the live count can briefly exceed this cap
+ * by the number of in-flight requests; that band is itself bounded upstream by
+ * the windowed filmstrip prefetch.
+ */
+export const GALLERY_THUMBNAIL_LRU_CAP = 400;
+
 export interface ThumbnailEntry {
   status: ThumbnailStatus;
   url: string | null;
@@ -41,6 +51,8 @@ interface QueuedThumbnailRequest {
   key: string;
   path: string;
   size: number;
+  /** Folder generation captured when the request was issued. */
+  generation: number;
   resolve: () => void;
 }
 
@@ -57,10 +69,78 @@ class GalleryThumbnailCache {
   #queue: QueuedThumbnailRequest[] = [];
   /** Number of backend calls actively running. */
   #activeCount = 0;
+  /**
+   * Folder generation token. Incremented on every folder change; in-flight
+   * requests capture the generation at issue time, and completions whose
+   * captured generation no longer matches are dropped (so a slow prior-folder
+   * thumbnail cannot repopulate the cache after a clear).
+   */
+  #generation = 0;
+  /**
+   * LRU recency order of cache keys (most-recently-used last). A key is touched
+   * on read and on insertion; eviction drops from the front, skipping any key
+   * still pending/in-flight.
+   */
+  #recency: string[] = [];
+
+  /** Current folder generation token. */
+  get generation(): number {
+    return this.#generation;
+  }
+
+  /** Number of entries currently retained in the cache (any status). */
+  get size(): number {
+    return Object.keys(this.#entries).length;
+  }
 
   /** Current entry for a path+size, or `undefined` if never requested. */
   get(path: string, size: number): ThumbnailEntry | undefined {
-    return this.#entries[cacheKey(path, size)];
+    const key = cacheKey(path, size);
+    const entry = this.#entries[key];
+    if (entry !== undefined) {
+      this.#touch(key);
+    }
+    return entry;
+  }
+
+  /** Drop a key from the recency list if present. */
+  #removeFromRecency(key: string): void {
+    const at = this.#recency.indexOf(key);
+    if (at !== -1) this.#recency.splice(at, 1);
+  }
+
+  /** Mark a key as most-recently-used. */
+  #touch(key: string): void {
+    this.#removeFromRecency(key);
+    this.#recency.push(key);
+  }
+
+  /**
+   * Evict least-recently-used resolved entries until at or below the LRU cap.
+   * Pending/in-flight entries are skipped — only `ready`/`error` entries are
+   * removed, so an in-flight completion can never be evicted out from under
+   * itself.
+   */
+  #enforceLru(): void {
+    let scan = 0;
+    while (this.#recency.length - scan > GALLERY_THUMBNAIL_LRU_CAP) {
+      const key = this.#recency[scan];
+      const entry = this.#entries[key];
+      if (entry === undefined) {
+        // Stale recency reference (already invalidated); drop it.
+        this.#recency.splice(scan, 1);
+        continue;
+      }
+      if (entry.status === "pending" || this.#inFlight.has(key)) {
+        // Cannot evict in-flight work; leave it in place and scan past it.
+        scan += 1;
+        continue;
+      }
+      this.#recency.splice(scan, 1);
+      const next = { ...this.#entries };
+      delete next[key];
+      this.#entries = next;
+    }
   }
 
   /** True if a request for this key has been issued (pending, ready, or error). */
@@ -82,6 +162,7 @@ class GalleryThumbnailCache {
   ): Promise<void> {
     const key = cacheKey(path, size);
     if (key in this.#entries || this.#inFlight.has(key)) {
+      this.#touch(key);
       return;
     }
 
@@ -89,8 +170,9 @@ class GalleryThumbnailCache {
       ...this.#entries,
       [key]: { status: "pending", url: null },
     };
+    this.#touch(key);
 
-    await this.#schedule({ key, path, size }, options);
+    await this.#schedule({ key, path, size, generation: this.#generation }, options);
   }
 
   prefetchFolder(paths: string[], size: number): void {
@@ -101,6 +183,38 @@ class GalleryThumbnailCache {
     }
   }
 
+  /**
+   * Prefetch only the thumbnails for a band of `±band` images around
+   * `currentIndex` (the visible window plus look-ahead/behind), rather than the
+   * whole folder. Each move cancels queued (not-yet-started) requests that now
+   * fall outside the band, then enqueues the new band; in-flight requests are
+   * left to finish (no cancellation of running work). Thumbnails outside the
+   * band load lazily on scroll via {@link request}.
+   */
+  prefetchWindow(
+    paths: string[],
+    currentIndex: number,
+    size: number,
+    band: number,
+  ): void {
+    // Cancel out-of-band queued requests so the new band isn't starved behind
+    // stale prefetch work. (Preserves the pre-existing cancel-on-prefetch
+    // behavior, now scoped to a moving window.)
+    this.cancelPending();
+
+    if (paths.length === 0) {
+      return;
+    }
+
+    const center = Math.max(0, Math.min(currentIndex, paths.length - 1));
+    const start = Math.max(0, center - band);
+    const end = Math.min(paths.length - 1, center + band);
+
+    for (let index = start; index <= end; index += 1) {
+      void this.request(paths[index], size);
+    }
+  }
+
   cancelPending(): void {
     const queuedKeys = new Set(this.#queue.map((request) => request.key));
     if (queuedKeys.size > 0) {
@@ -108,6 +222,7 @@ class GalleryThumbnailCache {
       for (const key of queuedKeys) {
         if (!this.#inFlight.has(key) && nextEntries[key]?.status === "pending") {
           delete nextEntries[key];
+          this.#removeFromRecency(key);
         }
       }
       this.#entries = nextEntries;
@@ -146,23 +261,38 @@ class GalleryThumbnailCache {
     this.#activeCount += 1;
     this.#inFlight.add(request.key);
 
+    let result: ThumbnailEntry | null = null;
     try {
       const thumbnail = await generateThumbnail({
         path: request.path,
         size: request.size,
       });
-      this.#entries = {
-        ...this.#entries,
-        [request.key]: { status: "ready", url: thumbnail.url },
-      };
+      result = { status: "ready", url: thumbnail.url };
     } catch {
-      this.#entries = {
-        ...this.#entries,
-        [request.key]: { status: "error", url: null },
-      };
+      result = { status: "error", url: null };
     } finally {
       this.#inFlight.delete(request.key);
       this.#activeCount = Math.max(0, this.#activeCount - 1);
+
+      // Generation guard: a completion from a superseded folder must not
+      // repopulate the cache after a folder-change clear. Drop the pending
+      // placeholder if it survived (it normally won't, since clear() resets
+      // #entries) so a stale entry can never linger.
+      if (request.generation !== this.#generation) {
+        if (this.#entries[request.key]?.status === "pending") {
+          const next = { ...this.#entries };
+          delete next[request.key];
+          this.#entries = next;
+          this.#removeFromRecency(request.key);
+        }
+      } else if (result !== null) {
+        this.#entries = {
+          ...this.#entries,
+          [request.key]: result,
+        };
+        this.#enforceLru();
+      }
+
       this.#drainQueue();
     }
   }
@@ -196,12 +326,25 @@ class GalleryThumbnailCache {
     delete next[key];
     this.#entries = next;
     this.#inFlight.delete(key);
+    this.#removeFromRecency(key);
+  }
+
+  /**
+   * Begin a new folder generation: bumps the generation token (so any in-flight
+   * prior-folder requests are dropped on completion) and clears the cache. This
+   * is the race-free folder-change reset.
+   */
+  newGeneration(): number {
+    this.#generation += 1;
+    this.clear();
+    return this.#generation;
   }
 
   /** Clear the entire session cache. */
   clear(): void {
     this.#entries = {};
     this.#inFlight.clear();
+    this.#recency = [];
     this.cancelPending();
     this.#activeCount = 0;
   }

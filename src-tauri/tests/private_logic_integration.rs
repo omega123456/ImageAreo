@@ -341,9 +341,10 @@ fn thumbnail_private_helpers_are_covered_from_integration_tests() {
         thumbnail_private::resize_image_for(&large_landscape, 6, 3).expect("resize should succeed");
     assert_eq!(resized.dimensions(), (6, 3));
 
-    let encoded =
-        thumbnail_private::encode_jpeg_for(&RgbaImage::from_pixel(3, 2, Rgba([255, 0, 0, 255])))
-            .expect("encode should succeed");
+    let encoded = thumbnail_private::encode_jpeg_for(&DynamicImage::ImageRgba8(
+        RgbaImage::from_pixel(3, 2, Rgba([255, 0, 0, 255])),
+    ))
+    .expect("encode should succeed");
     let decoded = image_rs::load_from_memory_with_format(&encoded, ImageFormat::Jpeg)
         .expect("encoded bytes should decode");
     assert_eq!(decoded.dimensions(), (3, 2));
@@ -363,9 +364,10 @@ fn thumbnail_private_helpers_are_covered_from_integration_tests() {
             .expect_err("missing source should fail");
     assert_eq!(missing_cache_path.code, "io_error");
 
-    let cache_bytes =
-        thumbnail_private::encode_jpeg_for(&RgbaImage::from_pixel(4, 3, Rgba([12, 34, 56, 255])))
-            .expect("encode should succeed");
+    let cache_bytes = thumbnail_private::encode_jpeg_for(&DynamicImage::ImageRgba8(
+        RgbaImage::from_pixel(4, 3, Rgba([12, 34, 56, 255])),
+    ))
+    .expect("encode should succeed");
     thumbnail_private::write_cache_file_for(&cache_path, &cache_bytes)
         .expect("cache write should succeed");
     thumbnail_private::write_cache_file_for(&cache_path, &cache_bytes)

@@ -210,6 +210,26 @@ export class ZoomPanController {
   }
 
   /**
+   * The image's currently-displayed long edge in *device* pixels — the on-screen
+   * resolution the user is actually viewing. Used by the viewer store to decide
+   * whether the current display tier still has enough pixels or whether a
+   * sharper tier should be fetched (#5 on-zoom upgrade).
+   *
+   * Returns the larger of the two scaled, orientation-aware dimensions times the
+   * device pixel ratio. Zero when no image is loaded.
+   */
+  displayedLongEdgeDevicePx(): number {
+    const { width, height } = this.effectiveDimensions();
+    const longEdge = Math.max(width, height);
+    if (longEdge <= 0) return 0;
+    const dpr =
+      typeof window !== "undefined" && window.devicePixelRatio > 0
+        ? window.devicePixelRatio
+        : 1;
+    return longEdge * this.viewer.zoom * dpr;
+  }
+
+  /**
    * Constrain a pan offset so the scaled image cannot be flung entirely out of
    * the container (ImageGlass-style edge-bounding). The image is centered at the
    * origin, so pan is measured from center. On each axis: when the scaled

@@ -4,6 +4,7 @@ pub mod commands;
 pub mod folder;
 pub mod image;
 pub mod menu;
+pub mod scheduler;
 pub mod startup;
 pub mod thumbnail;
 
@@ -74,6 +75,12 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .manage(launch_buffer)
         .setup(|app| {
+            // The decode scheduler spawns per-class dispatcher tasks on the Tauri
+            // async runtime, so it must be constructed inside `setup` (which runs
+            // within the runtime) rather than during builder configuration.
+            use tauri::Manager;
+            app.manage(scheduler::Scheduler::new());
+
             if menu::should_attach_native_menu() {
                 // Build and attach the native application menu, routing item
                 // clicks to the frontend. (OS hookup — coverage-excluded.)
@@ -105,6 +112,7 @@ pub fn run() {
             commands::associations_runtime::query_file_associations,
             commands::associations_runtime::set_default_associations,
             commands::scan_folder,
+            commands::probe_image,
             commands::decode_image,
             commands::peek_decoded_image,
             commands::sample_image,

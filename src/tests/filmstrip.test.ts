@@ -130,6 +130,34 @@ describe("Filmstrip", () => {
     });
   });
 
+  it("bounds prefetch to the visible window ±50 on a large folder", async () => {
+    seedFolder(500);
+    folder.currentIndex = 250;
+    render(Filmstrip);
+    // The rendered DOM window tracks the scroll position (stubbed at 0), but the
+    // prefetch band tracks folder.currentIndex; assert on the prefetch calls.
+    await flushAsyncWork();
+    await flushAsyncWork();
+
+    const calls = ipc.calls("generate_thumbnail");
+    const requested = new Set(
+      calls.map((c) => String((c as { path?: unknown })?.path)),
+    );
+
+    // The band (±50 around index 250) is prefetched.
+    expect(requested.has("/photos/img250.jpg")).toBe(true);
+    expect(requested.has("/photos/img200.jpg")).toBe(true);
+    expect(requested.has("/photos/img300.jpg")).toBe(true);
+    // Items neither in the band nor in the rendered DOM window are never
+    // requested — far from both the prefetch center and the (scroll=0) viewport.
+    expect(requested.has("/photos/img150.jpg")).toBe(false);
+    expect(requested.has("/photos/img350.jpg")).toBe(false);
+    expect(requested.has("/photos/img499.jpg")).toBe(false);
+    // Total bounded well under the folder size: the ±50 band (101) plus the
+    // small rendered DOM window, never the whole 500-image folder.
+    expect(requested.size).toBeLessThan(150);
+  });
+
   it("auto-centers the active thumb on selection change via JS scroll", async () => {
     seedFolder(80);
     render(Filmstrip);

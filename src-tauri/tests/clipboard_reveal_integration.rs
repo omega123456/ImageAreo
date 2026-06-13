@@ -180,6 +180,7 @@ async fn copy_image_to_clipboard_command_rejects_unsupported_inputs_before_os_wr
     use tauri::test::{mock_builder, mock_context, noop_assets};
 
     let app = mock_builder()
+        .manage(imageareo_lib::scheduler::Scheduler::new())
         .build(mock_context(noop_assets()))
         .expect("mock app should build");
 

@@ -38,6 +38,7 @@ import {
   MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon,
   PaletteIcon,
+  ProhibitIcon,
   WarningCircleIcon,
   XIcon,
 } from "phosphor-svelte";
@@ -97,6 +98,7 @@ export const icons = {
   updateAvailable: ArrowCircleUpIcon,
   imageFailed: ImageBrokenIcon,
   imageError: WarningCircleIcon,
+  imageTooLarge: ProhibitIcon,
   emptyPlaceholder: ImageIcon,
 } as const satisfies Record<string, Component>;
 
