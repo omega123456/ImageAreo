@@ -10,6 +10,32 @@ pub mod thumbnail;
 
 use startup::LaunchPathBuffer;
 
+#[cfg(target_os = "macos")]
+fn spawn_macos_new_instance(path: &str) -> bool {
+    let Ok(exe) = std::env::current_exe() else {
+        return false;
+    };
+    let Some(app_bundle) = startup::macos_app_bundle_path(&exe) else {
+        return false;
+    };
+
+    match std::process::Command::new("open")
+        .arg("-n")
+        .arg(app_bundle)
+        .arg("--args")
+        .arg(path)
+        .spawn()
+    {
+        Ok(mut child) => {
+            std::thread::spawn(move || {
+                let _ = child.wait();
+            });
+            true
+        }
+        Err(_) => false,
+    }
+}
+
 /// Signal that the frontend has registered its event listeners and is ready to
 /// receive the initial launch path. Returns the buffered path (if any) so the
 /// frontend can open it directly — closing the macOS Opened-before-ready race.
@@ -50,9 +76,9 @@ fn prevent_default() -> tauri::plugin::TauriPlugin<tauri::Wry> {
 pub fn run() {
     // NOTE: the single-instance plugin is intentionally NOT registered so that
     // multiple ImageAreo instances can run with independent folder contexts.
-    // On Windows a second launch spawns a new process naturally. On macOS the
-    // bundled Info.plist explicitly allows LaunchServices to create another
-    // instance for document opens instead of redirecting into the running app.
+    // On Windows a second launch spawns a new process naturally. On macOS,
+    // Finder routes warm document opens into the running process, so the
+    // RunEvent::Opened handler below forwards those paths to a fresh instance.
 
     // Buffer the initial launch path (argv) until the frontend signals ready.
     // The macOS "Opened" event is wired below and feeds the same buffer.
@@ -124,9 +150,10 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        // macOS delivers file-association opens via the Opened event; buffer or
-        // emit depending on whether the frontend is ready. (OS hookup —
-        // coverage-excluded.)
+        // macOS delivers file-association opens via the Opened event. Cold
+        // launches buffer the path for this process; warm launches spawn a new
+        // app instance because Finder routes document opens to the running app.
+        // (OS hookup — coverage-excluded.)
         .run(|app, event| {
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Opened { urls } = &event {
@@ -138,7 +165,9 @@ pub fn run() {
                 {
                     let buffer = app.state::<LaunchPathBuffer>();
                     if buffer.offer(path.clone()) {
-                        let _ = app.emit(startup::OPEN_PATH_EVENT, path);
+                        if !spawn_macos_new_instance(&path) {
+                            let _ = app.emit(startup::OPEN_PATH_EVENT, path);
+                        }
                     }
                 }
             }

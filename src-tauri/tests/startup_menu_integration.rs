@@ -7,7 +7,9 @@
 //! verified manually.
 
 use imageareo_lib::menu::{ids, should_attach_native_menu, MenuAction, MENU_EVENT};
-use imageareo_lib::startup::{parse_launch_path, LaunchPathBuffer, OPEN_PATH_EVENT};
+use imageareo_lib::startup::{
+    macos_app_bundle_path, parse_launch_path, LaunchPathBuffer, OPEN_PATH_EVENT,
+};
 
 #[test]
 fn parse_launch_path_reads_first_non_flag_argument() {
@@ -100,4 +102,18 @@ fn macos_plist_allows_document_opens_to_spawn_new_instances() {
 
     assert!(plist.contains("<key>LSMultipleInstancesProhibited</key>"));
     assert!(plist.contains("<false/>"));
+}
+
+#[test]
+fn macos_app_bundle_path_resolves_from_bundled_executable() {
+    let exe = std::path::Path::new("/Applications/ImageAreo.app/Contents/MacOS/imageareo");
+
+    assert_eq!(
+        macos_app_bundle_path(exe).as_deref(),
+        Some(std::path::Path::new("/Applications/ImageAreo.app"))
+    );
+    assert_eq!(
+        macos_app_bundle_path(std::path::Path::new("/tmp/imageareo")),
+        None
+    );
 }

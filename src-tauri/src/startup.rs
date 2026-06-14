@@ -7,13 +7,16 @@
 //!
 //! To avoid losing that initial path, the Rust side buffers it in a
 //! [`LaunchPathBuffer`] until the frontend calls the `frontend_ready` command.
-//! Once ready, any buffered path is flushed and emitted to the frontend; paths
-//! that arrive after the frontend is ready are emitted immediately.
+//! Once ready, any buffered path is flushed and emitted to the frontend. Paths
+//! that arrive after the frontend is ready are left to the OS-event caller:
+//! Windows argv launches open in their own process naturally, while macOS warm
+//! document opens are forwarded to a fresh `open -n` app instance.
 //!
 //! Only the pure logic (argv parsing + buffering state machine) lives here and
 //! is unit-tested. The OS-event hookup itself is wired in `lib.rs` and is on the
 //! coverage-exclusion list (it cannot be asserted headlessly).
 
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 /// The event name emitted to the frontend carrying a path to open.
@@ -33,6 +36,18 @@ where
         .map(Into::into)
         .skip(1)
         .find(|arg| !arg.is_empty() && !arg.starts_with('-'))
+}
+
+/// Resolve the surrounding `.app` bundle for a macOS executable path.
+///
+/// Bundled app executables live under `ImageAreo.app/Contents/MacOS/`; Finder
+/// document opens route to the already-running process, so the runtime uses this
+/// bundle path with `open -n` when it needs a fresh viewer instance.
+pub fn macos_app_bundle_path(executable_path: &Path) -> Option<PathBuf> {
+    executable_path
+        .ancestors()
+        .find(|path| path.extension().is_some_and(|ext| ext == "app"))
+        .map(Path::to_path_buf)
 }
 
 /// Buffers an initial launch path until the frontend signals it is ready.
