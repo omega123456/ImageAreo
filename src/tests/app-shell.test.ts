@@ -110,6 +110,15 @@ describe("App", () => {
     });
   });
 
+  it("hydrates the document root font size from monitor-aware ui scaling", async () => {
+    viewer.status = "ready";
+    render(App);
+
+    await waitFor(() => {
+      expect(document.documentElement.style.getPropertyValue("font-size")).toBe("16px");
+    });
+  });
+
   it("blocks viewer shortcuts behind the settings drawer but still allows Escape", async () => {
     viewer.status = "ready";
     viewer.rotation = 0;

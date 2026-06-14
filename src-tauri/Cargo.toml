@@ -40,6 +40,7 @@ tauri-plugin-dialog = "~2.7"
 tauri-plugin-opener = "~2.5"
 tauri-plugin-prevent-default = "~5.0"
 tauri-plugin-window-state = "~2.4"
+arboard = "3.6.1"
 base64 = "~0.22"
 exif = { package = "kamadak-exif", version = "0.6.1" }
 fast_image_resize = "5.1.2"

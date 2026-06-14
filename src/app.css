@@ -23,6 +23,7 @@
 @layer base {
   :root {
     --theme-cerberus: true;
+    font-size: var(--base-font-size, 16px);
     color-scheme: light dark;
   }
 

@@ -11,7 +11,7 @@ use crate::image::{self, DecodeImageError};
 use crate::scheduler::{JobClass, Priority, RunError, Scheduler, SchedulerError};
 use crate::thumbnail;
 pub use associations_runtime::{query_file_associations, set_default_associations};
-pub use clipboard::{prepare_clipboard_image, ClipboardImageData};
+pub use clipboard::validate_clipboard_file_path;
 pub use clipboard_runtime::copy_image_to_clipboard;
 pub use reveal::validate_reveal_path;
 pub use reveal_runtime::reveal_in_file_manager;

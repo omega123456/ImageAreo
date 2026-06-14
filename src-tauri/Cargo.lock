@@ -2214,6 +2214,7 @@ name = "imageareo"
 version = "1.3.3"
 dependencies = [
  "alloc-stdlib",
+ "arboard",
  "base64 0.22.1",
  "brotli-decompressor",
  "core-foundation",

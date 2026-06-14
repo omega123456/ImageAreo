@@ -270,25 +270,6 @@ fn display_intent_cache_file_from_public_decoder_is_decodable() {
     assert_eq!(on_disk.dimensions(), (48, 48));
 }
 
-#[test]
-fn load_full_image_cached_supports_native_and_backend_sources() {
-    let _cache = common::CacheGuard::new();
-    let dir = TempImageDir::new();
-    let native = dir.path().join("native.png");
-    write_image(&native, 7, 5, ImageFormat::Png);
-
-    let (native_image, native_orientation) =
-        image::load_full_image_cached(&native).expect("native image should load");
-    assert_eq!(native_image.dimensions(), (7, 5));
-    assert_eq!(native_orientation, 1);
-
-    let (backend_image, backend_orientation) =
-        image::load_full_image_cached(&fixture_path("sample.heic"))
-            .expect("backend image should load via display cache");
-    assert_eq!(backend_image.dimensions(), (48, 48));
-    assert_eq!(backend_orientation, 1);
-}
-
 #[tokio::test]
 async fn command_wrappers_cover_error_paths_and_native_peek_behavior() {
     let dir = TempImageDir::new();

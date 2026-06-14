@@ -1,8 +1,8 @@
 //! Bounded, prioritized, single-flight decode scheduler (Phase 2).
 //!
 //! All decode-class work (preview/display/viewport/enhance decodes, thumbnails,
-//! samples, clipboard preparation) is routed through this scheduler. It does
-//! three things and **never cancels a running job**:
+//! samples) is routed through this scheduler. It does three things and **never
+//! cancels a running job**:
 //!
 //! 1. **Single-flight** — duplicate or returning (navigate-away-and-back)
 //!    requests for the same key join the in-flight leader's future via

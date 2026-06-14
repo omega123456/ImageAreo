@@ -11,9 +11,11 @@ Built with [Tauri 2](https://v2.tauri.app/) (Rust + native OS webview) and [Svel
 Most built-in viewers are fine for a quick peek, but they often struggle with less common formats, feel sluggish when zooming, or bury useful actions behind menus. ImageAreo is designed around a few simple ideas:
 
 - **Open anything local** — JPEG and PNG load instantly; HEIC, TIFF, AVIF, JPEG XL, and camera RAW files are decoded inside the app so you do not need extra plugins.
-- **Browse a whole folder, not just one file** — when you open an image, ImageAreo loads the rest of the folder into a gallery strip so you can step through shots with the arrow keys or a click.
-- **Zoom that feels good** — smooth, cursor-anchored scroll-wheel zoom with drag-to-pan and momentum, plus one-key fit and 100% modes.
-- **Small and native** — a compact install (no bundled Chromium), native window chrome, and OS integrations like “Reveal in Finder/Explorer” and clipboard copy.
+- **RAW files open fast, sharpen on demand** — camera RAW files show an embedded preview immediately; click **Enhance** when you want a full sensor demosaic for maximum detail (on-screen only — nothing is written back to disk).
+- **Browse a whole folder, not just one file** — when you open an image, ImageAreo loads the rest of the folder into a gallery strip so you can step through shots with the arrow keys or a click. The folder list refreshes automatically when files are added or removed.
+- **Metadata at a glance** — toggle an **Image info** card for file details, dimensions, and camera EXIF (ISO, aperture, shutter, lens, and more) without leaving the viewer.
+- **Zoom that feels good** — smooth, cursor-anchored scroll-wheel zoom with drag-to-pan and momentum, plus one-key fit and 100% modes. Zooming in past the current resolution tier fetches a sharper decode in the background.
+- **Small and native** — a compact install (no bundled Chromium), native window chrome, and OS integrations like “Reveal in Finder/Explorer”, copy image to clipboard, and copy file path.
 - **Honest about scope** — ImageAreo is a *viewer*, not an editor. No crop, filters, or export workflows — just fast, pleasant browsing.
 
 ---
@@ -98,26 +100,40 @@ When you open a single image, ImageAreo automatically scans the **parent folder*
 ImageAreo’s layout is intentionally minimal:
 
 - **Canvas** — the image fills the centre on a neutral surround (dark in dark mode, soft light grey in light mode) so your photo is not sitting on harsh pure white.
-- **Floating toolbar** — a compact bar with open, zoom, rotate, fullscreen, gallery toggle, and settings actions. It auto-hides after a few seconds of idle time and reappears when you move the mouse or press a key.
-- **Gallery strip (filmstrip)** — a horizontal row of thumbnails for every image in the current folder. Click a thumbnail to jump between files. Toggle visibility from the toolbar.
-- **Zoom HUD** — a small readout showing the current zoom level (for example “Fit” or “142%”). It appears briefly when you zoom and then fades away.
-- **Settings drawer** — slides in from the right without covering the image, so you can preview theme and gallery changes live.
+- **Floating toolbar** — a compact glass bar with open, zoom, rotate, fullscreen, gallery toggle, image info, and settings actions. Icon colour adapts to the brightness of the image beneath the bar. The toolbar auto-hides after a few seconds of idle time and reappears when you move the mouse or press a key. When browsing a folder, a **position counter** (for example `3 / 24`) shows where you are in the list.
+- **Gallery strip (filmstrip)** — a horizontal row of thumbnails for every image in the current folder. Click a thumbnail to jump between files. Toggle visibility from the toolbar. Thumbnail size is controlled by the gallery **density** setting (Small / Medium / Large).
+- **Image info card** — a floating panel (top-left) with **File**, **Image**, and **Camera** groups: path, format, size, dimensions, colour depth, and EXIF when present. Toggle from the toolbar.
+- **Enhance control** — for camera RAW files, an **Enhance** pill appears once the fast preview is ready. Click it to run a full-resolution demosaic when you need maximum sharpness.
+- **Zoom HUD** — a small readout showing the current zoom level (for example “Fit” or “142%”). It appears briefly when you zoom and then fades away. Click it to toggle between fit and 100%.
+- **Settings drawer** — slides in from the right without covering the image, so you can preview theme and gallery changes live. See [Settings](#settings) below.
+- **macOS menu bar** — on macOS, a native **File** / **View** menu mirrors the main toolbar actions (open, fit, fullscreen, gallery toggle, settings).
 
 ### Viewing and navigating
 
-- **Scroll the mouse wheel** over the image to zoom in and out smoothly. Zoom is anchored to the cursor position, so the point under your mouse stays fixed as you magnify — useful for inspecting detail in a photo.
+- **Scroll the mouse wheel** over the image to zoom in and out smoothly. Zoom is anchored to the cursor position, so the point under your mouse stays fixed as you magnify — useful for inspecting detail in a photo. When you zoom in far enough, ImageAreo fetches a higher-resolution decode in the background; a brief **Sharpening…** indicator appears only if that upgrade takes long enough to notice.
 - **Click and drag** to pan when zoomed in. Release the mouse and the view carries a little momentum, similar to a map or photo app.
-- **Right-click** the image to open the context menu.
+- **Right-click** the image to open the context menu: rotate left/right, copy image, copy file path, and reveal in Finder or Explorer.
 
-Most actions — navigation, zoom, fit, rotation, fullscreen, and more — are also available via **keyboard shortcuts**, so you can browse hands-on-keyboard when you want to.
+Most actions — navigation, zoom, fit, rotation, fullscreen, image info, and more — are also available from the keyboard.
+
+### Settings
+
+Open **Settings** from the toolbar (or the macOS app menu). The drawer stays beside the image so you can see changes immediately:
+
+- **Appearance** — **Theme**: Dark, Light, or follow System.
+- **Gallery strip** — **Density** (thumbnail size): Small, Medium, or Large. **Sort**: by file name or date modified (re-sorts the current folder immediately).
+- **File types** — choose which extensions ImageAreo should register as the default viewer, then click **Apply** (the OS may ask you to confirm).
+- **About** — version number and in-app update when a new release is available.
+
+UI text scales automatically for your display resolution and DPI so controls stay readable on high-density and large monitors.
 
 ### Fullscreen
 
-Fullscreen hides the toolbar and zoom HUD for a distraction-free view; the gallery strip stays available. Move the mouse or press a key to bring controls back temporarily. Exit from the toolbar or a keyboard shortcut.
+Fullscreen is designed for distraction-free viewing. The toolbar slides away on idle; the gallery strip also auto-hides (unlike windowed mode, where the strip stays visible). The mouse cursor hides while chrome is idle. Move the mouse or press a key to bring controls back temporarily. Exit from the toolbar or the keyboard.
 
 ### Multiple windows
 
-ImageAreo deliberately supports **more than one window at a time**. Open a second folder in a new window from **File → New Window** (or launch the app again). Each window keeps its own folder context — handy when comparing shots from two locations or reviewing exports alongside originals.
+ImageAreo supports **more than one window at a time** — launch the app again (or open it from the dock / Start menu while it is already running) to get a second window. Each window keeps its own folder context, which is handy when comparing shots from two locations or reviewing exports alongside originals.
 
 ---
 
@@ -143,7 +159,7 @@ ImageAreo handles a wide range of still-image formats. Common web formats are re
 | Apple | `.heic`, `.heif` |
 | Camera RAW | `.cr2`, `.cr3`, `.nef`, `.arw`, `.dng`, `.orf`, `.rw2`, `.raf`, `.srw`, `.pef`, `.raw`, and others |
 
-RAW and HEIC files may take a moment longer to display while the decoder runs. A loading indicator appears for slow decodes; corrupt or unsupported files show a clear error state with a retry option.
+RAW and HEIC files may take a moment longer to display while the decoder runs. RAW files in particular open with a fast embedded preview first; use **Enhance** for a full sensor demosaic when you need maximum detail. A loading indicator appears for slow decodes; corrupt or unsupported files show a clear error state with a retry option.
 
 > **Note:** ImageAreo only works with **local files**. Cloud-only paths, network drives with restricted access, or files your OS cannot read will not open.
 
@@ -159,7 +175,7 @@ ImageAreo checks for new versions when it starts. If an update is available, a s
 
 To set expectations, these are intentionally out of scope for the current release:
 
-- No image editing beyond on-screen rotation (no crop, filters, colour adjustments, or annotations).
+- No image editing beyond on-screen rotation and optional RAW **Enhance** (display-only — nothing is saved back to the file).
 - No saving, exporting, or format conversion.
 - No slideshow, batch rename, or printing.
 - No cloud or remote sources — local files only.

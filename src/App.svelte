@@ -15,6 +15,7 @@
   import { galleryUi } from "./lib/stores/gallery-ui.svelte";
   import { chrome } from "./lib/stores/chrome.svelte";
   import { folder } from "./lib/stores/folder.svelte";
+  import { uiScale } from "./lib/stores/ui-scale.svelte";
   import { ui } from "./lib/stores/ui.svelte";
   import { viewer } from "./lib/stores/viewer.svelte";
   import { imageInfo } from "./lib/stores/image-info.svelte";
@@ -223,6 +224,7 @@
     let unlisten: UnlistenFn | undefined;
     chrome.start();
     folder.startAutoScan();
+    void uiScale.start();
     const cancelUpdateCheck = updater.scheduleLaunchCheck();
     void ui.initializeFullscreen();
     void registerEntryPoints({
@@ -239,6 +241,7 @@
     return () => {
       chrome.stop();
       folder.stopAutoScan();
+      uiScale.stop();
       cancelUpdateCheck();
       unlisten?.();
     };

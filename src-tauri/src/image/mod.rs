@@ -1,7 +1,6 @@
 use std::fs;
 use std::io::{BufReader, Cursor, Read};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 pub mod cache_maintenance;
 pub mod disk_cache;
@@ -763,48 +762,6 @@ pub fn load_supported_image_path(path: &Path) -> Result<LoadedImageData, DecodeI
     match classify_path(path) {
         Some(ImageFormatSupport::Native) => decode_native_image(path),
         Some(ImageFormatSupport::NeedsBackend) => load_backend_image_path(path, RawSource::Full),
-        None => Err(DecodeImageError::unsupported(format!(
-            "unsupported image format: {}",
-            path.display()
-        ))),
-    }
-}
-
-/// Load a fully-developed image (shared `Arc`) for consumers that need raw
-/// pixels — currently the clipboard copy. Backend formats are sourced from the
-/// on-disk display cache (built if absent), so the RAW is not re-developed.
-/// Native formats are cheap and decoded directly.
-pub fn load_full_image_cached(path: &Path) -> Result<(Arc<DynamicImage>, u16), DecodeImageError> {
-    match classify_path(path) {
-        Some(ImageFormatSupport::Native) => {
-            let loaded = decode_native_image(path)?;
-            Ok((Arc::new(loaded.image), loaded.orientation))
-        }
-        Some(ImageFormatSupport::NeedsBackend) => {
-            let display = decode_to_cache(path, DecodeIntent::Display)?;
-            let image = ImageReader::open(&display.path)
-                .map_err(|err| {
-                    DecodeImageError::io(format!(
-                        "failed to open display cache {}: {err}",
-                        display.path.display()
-                    ))
-                })?
-                .with_guessed_format()
-                .map_err(|err| {
-                    DecodeImageError::decode(format!(
-                        "failed to inspect display cache {}: {err}",
-                        display.path.display()
-                    ))
-                })?
-                .decode()
-                .map_err(|err| {
-                    DecodeImageError::decode(format!(
-                        "failed to decode display cache {}: {err}",
-                        display.path.display()
-                    ))
-                })?;
-            Ok((Arc::new(image), display.orientation))
-        }
         None => Err(DecodeImageError::unsupported(format!(
             "unsupported image format: {}",
             path.display()
