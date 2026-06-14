@@ -34,7 +34,7 @@ import {
 } from "../utils/format";
 
 /**
- * Viewport tier buckets (device-pixel long edge), mirroring the backend
+ * Viewport tier buckets (CSS-pixel long edge), mirroring the backend
  * `disk_cache.rs` bucket set so the frontend can predict which tier cap a
  * viewport hint resolves to and compare it against the on-zoom displayed
  * resolution. The last bucket (8192) is the maximum on-zoom sharper tier.
@@ -46,9 +46,9 @@ const VIEWPORT_TIER_MIN_EDGE = 1024;
 const DISPLAY_LONG_EDGE_CAP = 8192;
 
 /**
- * Resolve a requested device-pixel long edge to the bucketed tier cap the
- * backend will actually produce. Picks the smallest bucket ≥ the request,
- * clamped to the [min, max] range.
+ * Resolve a requested CSS-pixel long edge to the bucketed tier cap the backend
+ * will actually produce. Picks the smallest bucket ≥ the request, clamped to
+ * the [min, max] range.
  */
 function bucketTierCap(requestedLongEdge: number): number {
   const target = Math.max(VIEWPORT_TIER_MIN_EDGE, Math.round(requestedLongEdge));
@@ -192,14 +192,17 @@ class ViewerStore {
     return this.#inFlightPaths.has(path);
   }
 
-  /** Build the viewport hint for a primary display decode, if dims are known. */
-  #viewportHint(): { longEdgePx: number; dpr: number } | undefined {
+  /**
+   * Build the viewport hint for a primary display decode, if dims are known.
+   * The tier is sized to CSS viewport pixels only — devicePixelRatio is not
+   * factored in, because scaling by DPR sized the display tier to the
+   * (super-sampled) framebuffer rather than the panel and overshot the physical
+   * screen on macOS scaled-HiDPI modes (e.g. a 4K panel producing a 6144px
+   * derivative). Zooming in still upgrades to the full tier when needed.
+   */
+  #viewportHint(): { longEdgePx: number } | undefined {
     if (this.#viewportLongEdgePx <= 0) return undefined;
-    const dpr =
-      typeof window !== "undefined" && window.devicePixelRatio > 0
-        ? window.devicePixelRatio
-        : 1;
-    return { longEdgePx: this.#viewportLongEdgePx, dpr };
+    return { longEdgePx: this.#viewportLongEdgePx };
   }
 
   /** Clear all Enhance lifecycle state. */
@@ -541,11 +544,18 @@ class ViewerStore {
         true,
       );
       if (applied) {
-        this.#currentTierLongEdge = viewport
-          ? bucketTierCap(viewport.longEdgePx * viewport.dpr)
+        const tierCap = viewport
+          ? bucketTierCap(viewport.longEdgePx)
           : DISPLAY_LONG_EDGE_CAP;
+        this.#currentTierLongEdge = tierCap;
+        // No sharper tier exists once we are at the max cap, or when the
+        // derivative is already source-limited (the source is smaller than the
+        // tier cap, so its long edge came back below the cap). Suppressing the
+        // upgrade here stops an on-zoom request from regenerating a byte-for-byte
+        // identical derivative under a different cache key.
+        const decodedLongEdge = Math.max(decoded.width, decoded.height);
         this.#sharperTierRequested =
-          this.#currentTierLongEdge >= DISPLAY_LONG_EDGE_CAP;
+          tierCap >= DISPLAY_LONG_EDGE_CAP || decodedLongEdge < tierCap;
       }
     } finally {
       this.#inFlightPaths.delete(path);
@@ -558,10 +568,10 @@ class ViewerStore {
    * Drives the `sharpening` flag (consumed by the debounced pill). No-ops when
    * already at/above the max tier, mid-fetch, or not showing a backend image.
    *
-   * `displayedLongEdgeDevicePx` is the on-screen long edge in device pixels; the
+   * `displayedLongEdgeCssPx` is the on-screen long edge in CSS pixels; the
    * upgrade is skipped when it does not exceed the current tier (e.g. zoom-out).
    */
-  async maybeUpgradeTier(displayedLongEdgeDevicePx: number): Promise<void> {
+  async maybeUpgradeTier(displayedLongEdgeCssPx: number): Promise<void> {
     const path = this.path;
     if (
       path === null ||
@@ -572,7 +582,7 @@ class ViewerStore {
     ) {
       return;
     }
-    if (displayedLongEdgeDevicePx <= this.#currentTierLongEdge) {
+    if (displayedLongEdgeCssPx <= this.#currentTierLongEdge) {
       return;
     }
 
@@ -586,7 +596,7 @@ class ViewerStore {
         quality: "display",
         priority: "currentImage",
         generation: requestId,
-        viewport: { longEdgePx: DISPLAY_LONG_EDGE_CAP, dpr: 1 },
+        viewport: { longEdgePx: DISPLAY_LONG_EDGE_CAP },
       });
       if (!this.#isCurrentRequest(requestId, path)) {
         return;

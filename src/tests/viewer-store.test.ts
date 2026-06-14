@@ -725,7 +725,7 @@ describe("viewer store", () => {
   }
 
   it("openPath() carries the viewport hint on a backend display decode", async () => {
-    viewer.setViewportLongEdge(1000); // dpr 1 → request ~1000 → bucket 1024
+    viewer.setViewportLongEdge(1000); // request ~1000 → bucket 1024
     ipc.override("decode_image", () =>
       displayDecode("/tmp/imageareo-images/disp.jpg", 4000, 3000),
     );
@@ -738,7 +738,7 @@ describe("viewer store", () => {
         quality: "display",
         priority: "currentImage",
         generation: expect.any(Number),
-        viewport: { longEdgePx: 1000, dpr: 1 },
+        viewport: { longEdgePx: 1000 },
       },
     ]);
     expect(viewer.status).toBe("ready");
@@ -856,6 +856,29 @@ describe("viewer store", () => {
     await viewer.maybeUpgradeTier(20000);
 
     expect(displayCalls).toBe(1);
+  });
+
+  it("does not upgrade when the derivative is already source-limited", async () => {
+    // The viewport tier caps at 4096, but the source is smaller than the cap so
+    // the display decode comes back at its full 1400px long edge. Zooming in must
+    // not request a sharper tier, since the 8192 decode would reproduce the same
+    // (source-limited) pixels under a different cache key.
+    viewer.setViewportLongEdge(4000); // bucket 4096
+    let displayCalls = 0;
+    ipc.override("decode_image", () => {
+      displayCalls += 1;
+      return displayDecode("/tmp/imageareo-images/small.jpg", 1400, 1400);
+    });
+
+    await viewer.openPath("/photos/small.heic");
+    expect(displayCalls).toBe(1);
+
+    // Displayed long edge far exceeds the 4096 tier cap, but there is no sharper
+    // tier to fetch for this source.
+    await viewer.maybeUpgradeTier(9000);
+
+    expect(displayCalls).toBe(1);
+    expect(viewer.sharpening).toBe(false);
   });
 
   it("does not upgrade a native direct image (no current tier)", async () => {

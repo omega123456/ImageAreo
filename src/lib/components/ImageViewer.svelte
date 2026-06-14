@@ -300,7 +300,7 @@
     if (typeof window === "undefined" || !controller) return;
     const ctrl = controller;
     const id = window.setTimeout(() => {
-      void viewer.maybeUpgradeTier(ctrl.displayedLongEdgeDevicePx());
+      void viewer.maybeUpgradeTier(ctrl.displayedLongEdgeCssPx());
     }, 200);
     return () => window.clearTimeout(id);
   });

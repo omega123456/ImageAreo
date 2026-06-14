@@ -29,7 +29,7 @@ pub enum CacheVariant {
     /// Cheapest, instant-paint image — always JPEG.
     Preview,
     /// Viewport-sized initial display image, capped to a bucketed
-    /// viewport×DPR edge — JPEG (opaque) or PNG (has alpha). Keyed distinctly
+    /// viewport long edge — JPEG (opaque) or PNG (has alpha). Keyed distinctly
     /// from `Display` (which is the full 8192 on-zoom tier) by both this tag
     /// and the bucketed cap-in-key, so the two tiers never collide.
     Viewport,

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { tick } from "svelte";
 import { render, screen, fireEvent, waitFor } from "@testing-library/svelte";
 import ImageViewer from "../lib/components/ImageViewer.svelte";
 import { viewer } from "../lib/stores/viewer.svelte";
@@ -131,6 +132,52 @@ describe("ImageViewer", () => {
     // The container exists, so the $effect should have constructed a controller.
     expect(document.querySelector(".bg-canvas-surround")).not.toBeNull();
     unmount();
+  });
+
+  it("fires the on-zoom sharper-tier upgrade with the displayed long edge after the debounce", async () => {
+    vi.useFakeTimers();
+    const upgradeSpy = vi
+      .spyOn(viewer, "maybeUpgradeTier")
+      .mockResolvedValue(undefined);
+
+    viewer.load("asset://photo.jpg", "photo.jpg");
+    viewer.path = "/photos/photo.jpg";
+    viewer.setReady(4000, 3000);
+
+    render(ImageViewer);
+
+    // A zoom-in re-runs the debounced effect; only the post-zoom firing matters.
+    upgradeSpy.mockClear();
+    viewer.zoom = 3;
+    await tick();
+    await vi.advanceTimersByTimeAsync(200);
+
+    // Wired to the controller's displayed long edge: 4000 (long edge) × zoom 3.
+    expect(upgradeSpy).toHaveBeenCalledTimes(1);
+    expect(upgradeSpy).toHaveBeenCalledWith(12000);
+
+    vi.useRealTimers();
+  });
+
+  it("does not fire the upgrade before the debounce elapses", async () => {
+    vi.useFakeTimers();
+    const upgradeSpy = vi
+      .spyOn(viewer, "maybeUpgradeTier")
+      .mockResolvedValue(undefined);
+
+    viewer.load("asset://photo.jpg", "photo.jpg");
+    viewer.path = "/photos/photo.jpg";
+    viewer.setReady(4000, 3000);
+
+    render(ImageViewer);
+    upgradeSpy.mockClear();
+    viewer.zoom = 3;
+    await tick();
+    await vi.advanceTimersByTimeAsync(199);
+
+    expect(upgradeSpy).not.toHaveBeenCalled();
+
+    vi.useRealTimers();
   });
 
   it("re-samples the toolbar tone when the first-open layout settles after mount", async () => {

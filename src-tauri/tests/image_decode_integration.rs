@@ -904,18 +904,14 @@ fn error_constructors_set_expected_codes() {
 fn viewport_tier_cap_buckets_and_clamps() {
     // Below the floor → floor bucket.
     assert_eq!(
-        image::viewport_tier_cap(ViewportHint {
-            long_edge_px: 200.0,
-            dpr: 1.0,
-        }),
+        image::viewport_tier_cap(ViewportHint { long_edge_px: 200.0 }),
         VIEWPORT_TIER_MIN_EDGE
     );
 
-    // Mid-range rounds up to the smallest covering bucket: 1390×1.0 → 1536.
+    // Mid-range rounds up to the smallest covering bucket: 1390 → 1536.
     assert_eq!(
         image::viewport_tier_cap(ViewportHint {
             long_edge_px: 1390.0,
-            dpr: 1.0,
         }),
         1536
     );
@@ -924,16 +920,14 @@ fn viewport_tier_cap_buckets_and_clamps() {
     assert_eq!(
         image::viewport_tier_cap(ViewportHint {
             long_edge_px: 2048.0,
-            dpr: 1.0,
         }),
         2048
     );
 
-    // DPR multiplies: 1500×2.0 = 3000 → 3072 bucket.
+    // 3000 rounds up to the 3072 bucket.
     assert_eq!(
         image::viewport_tier_cap(ViewportHint {
-            long_edge_px: 1500.0,
-            dpr: 2.0,
+            long_edge_px: 3000.0,
         }),
         3072
     );
@@ -942,7 +936,6 @@ fn viewport_tier_cap_buckets_and_clamps() {
     assert_eq!(
         image::viewport_tier_cap(ViewportHint {
             long_edge_px: 10000.0,
-            dpr: 3.0,
         }),
         DISPLAY_LONG_EDGE_CAP
     );
@@ -952,15 +945,11 @@ fn viewport_tier_cap_buckets_and_clamps() {
     assert_eq!(
         image::viewport_tier_cap(ViewportHint {
             long_edge_px: f64::NAN,
-            dpr: 2.0,
         }),
         VIEWPORT_TIER_MIN_EDGE
     );
     assert_eq!(
-        image::viewport_tier_cap(ViewportHint {
-            long_edge_px: 0.0,
-            dpr: 2.0,
-        }),
+        image::viewport_tier_cap(ViewportHint { long_edge_px: 0.0 }),
         VIEWPORT_TIER_MIN_EDGE
     );
 }
@@ -970,7 +959,6 @@ fn display_tier_selects_viewport_only_for_display_with_hint() {
     use image::__test_support::display_tier_for;
     let hint = ViewportHint {
         long_edge_px: 1280.0,
-        dpr: 1.0,
     };
 
     // Display + hint → bucketed Viewport tier.
@@ -1001,12 +989,11 @@ fn viewport_decode_produces_a_smaller_derivative_keyed_distinctly() {
 
     let hint = ViewportHint {
         long_edge_px: 1000.0,
-        dpr: 1.0,
     };
     let viewport = image::decode_to_cache_viewport(&path, DecodeIntent::Display, Some(hint))
         .expect("viewport decode should succeed");
 
-    // 1000×1.0 → 1024 bucket; the long edge is capped to it.
+    // 1000 → 1024 bucket; the long edge is capped to it.
     assert_eq!(viewport.width.max(viewport.height), 1024);
     assert!(viewport.width.max(viewport.height) < DISPLAY_LONG_EDGE_CAP);
 
@@ -1035,7 +1022,6 @@ fn viewport_and_display_tiers_coexist_without_clobbering() {
 
     let hint = ViewportHint {
         long_edge_px: 1500.0,
-        dpr: 1.0,
     };
     let viewport = image::decode_to_cache_viewport(&path, DecodeIntent::Display, Some(hint))
         .expect("viewport decode");
@@ -1063,7 +1049,6 @@ fn near_identical_viewports_share_a_bucketed_cache_hit() {
         DecodeIntent::Display,
         Some(ViewportHint {
             long_edge_px: 1300.0,
-            dpr: 1.0,
         }),
     )
     .expect("first viewport decode");
@@ -1072,7 +1057,6 @@ fn near_identical_viewports_share_a_bucketed_cache_hit() {
         DecodeIntent::Display,
         Some(ViewportHint {
             long_edge_px: 1420.0,
-            dpr: 1.0,
         }),
     )
     .expect("second viewport decode");
@@ -1100,7 +1084,6 @@ fn viewport_tier_files_live_in_the_image_cache_dir_and_are_swept_by_age() {
         DecodeIntent::Display,
         Some(ViewportHint {
             long_edge_px: 900.0,
-            dpr: 1.0,
         }),
     )
     .expect("viewport decode");

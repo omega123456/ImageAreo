@@ -60,32 +60,33 @@ pub const DISPLAY_JPEG_QUALITY: u8 = 92;
 pub const VIEWPORT_TIER_MIN_EDGE: u32 = 1024;
 
 /// The discrete set of long-edge caps the viewport tier is bucketed to. A
-/// requested viewport×DPR edge is rounded *up* to the smallest bucket that
+/// requested viewport long edge is rounded *up* to the smallest bucket that
 /// covers it (clamped to `[VIEWPORT_TIER_MIN_EDGE, DISPLAY_LONG_EDGE_CAP]`).
 /// Bucketing keeps cache reuse high: near-identical window sizes (e.g. 1390 vs
 /// 1410 px) collapse onto the same cap and therefore the same cache key, instead
 /// of fragmenting the cache into a derivative per pixel-width. The top bucket
-/// equals `DISPLAY_LONG_EDGE_CAP`, so a maximized window on a hi-DPR display
-/// still never exceeds the 8192 on-zoom ceiling.
+/// equals `DISPLAY_LONG_EDGE_CAP`, so a maximized window still never exceeds the
+/// 8192 on-zoom ceiling.
 pub const VIEWPORT_TIER_BUCKETS: &[u32] = &[1024, 1536, 2048, 3072, 4096, 6144, 8192];
 
 /// A viewport sizing hint supplied by the frontend: the longest CSS edge of the
-/// viewport in pixels and the device pixel ratio. Used to size the initial
-/// display derivative to what the window can actually show.
+/// viewport in pixels. Used to size the initial display derivative to what the
+/// window can actually show. devicePixelRatio is intentionally excluded — scaling
+/// by it sized the tier to the super-sampled framebuffer rather than the physical
+/// panel and overshot on macOS scaled-HiDPI modes.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ViewportHint {
     pub long_edge_px: f64,
-    pub dpr: f64,
 }
 
-/// Bucket a raw viewport×DPR long edge to a stable cap drawn from
-/// [`VIEWPORT_TIER_BUCKETS`]. The raw target is `round(long_edge_px × dpr)`,
-/// clamped to `[VIEWPORT_TIER_MIN_EDGE, DISPLAY_LONG_EDGE_CAP]`, then rounded up
-/// to the smallest covering bucket. Non-finite or non-positive inputs fall back
-/// to the floor bucket.
+/// Bucket a viewport long edge to a stable cap drawn from
+/// [`VIEWPORT_TIER_BUCKETS`]. The target is `round(long_edge_px)`, clamped to
+/// `[VIEWPORT_TIER_MIN_EDGE, DISPLAY_LONG_EDGE_CAP]`, then rounded up to the
+/// smallest covering bucket. Non-finite or non-positive inputs fall back to the
+/// floor bucket.
 pub fn viewport_tier_cap(hint: ViewportHint) -> u32 {
-    let raw = hint.long_edge_px * hint.dpr;
+    let raw = hint.long_edge_px;
     let target = if raw.is_finite() && raw >= 1.0 {
         let rounded = raw.round();
         // `rounded` is finite and >= 1.0 here; clamp before the lossy cast.
@@ -234,7 +235,7 @@ pub fn decode_to_cache(
 
 /// Like [`decode_to_cache`], but for a `Display` decode `viewport` may carry a
 /// viewport sizing hint. When present (and only for `DecodeIntent::Display`) the
-/// result is sized to the bucketed viewport×DPR edge and written under the
+/// result is sized to the bucketed viewport long edge and written under the
 /// distinct `Viewport` cache variant, leaving the 8192 `Display` tier untouched
 /// for the on-zoom sharper request. A `None` hint reproduces the original
 /// behaviour exactly. The hint is ignored for `Preview`/`Enhance` intents.

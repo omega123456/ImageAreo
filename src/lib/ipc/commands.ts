@@ -118,16 +118,18 @@ export interface ScanFolderRequest {
 
 /**
  * Viewport hint for sizing the initial display derivative (#5). The backend
- * sizes the tier to `clamp(round(longEdgePx * dpr), VIEWPORT_TIER_MIN_EDGE,
+ * sizes the tier to `clamp(round(longEdgePx), VIEWPORT_TIER_MIN_EDGE,
  * DISPLAY_LONG_EDGE_CAP)`, bucketed for cache reuse. Applies only to
  * `quality: "display"` decodes; omitted for `preview`/`enhance` and for the
  * on-zoom sharper-tier request (which targets the full 8192 tier).
+ *
+ * devicePixelRatio is deliberately not part of the hint: scaling by DPR sized
+ * the tier to the (super-sampled) framebuffer rather than the physical panel,
+ * which overshot on macOS scaled-HiDPI modes.
  */
 export interface ViewportHint {
   /** Viewport long edge in CSS pixels. */
   longEdgePx: number;
-  /** Device pixel ratio (`window.devicePixelRatio`). */
-  dpr: number;
 }
 
 export interface DecodeImageRequest extends SchedulerHint {
