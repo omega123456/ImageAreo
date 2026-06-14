@@ -5,9 +5,10 @@ const { openDialog } = vi.hoisted(() => ({
   openDialog: vi.fn(),
 }));
 
-const { readFullscreen, writeFullscreen } = vi.hoisted(() => ({
+const { readFullscreen, writeFullscreen, writeTitle } = vi.hoisted(() => ({
   readFullscreen: vi.fn(async () => false),
   writeFullscreen: vi.fn(async () => {}),
+  writeTitle: vi.fn(async (_title: string) => {}),
 }));
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
@@ -22,7 +23,7 @@ vi.mock("../lib/utils/native-window", async () => {
     ...actual,
     readFullscreen,
     writeFullscreen,
-    writeTitle: vi.fn(async () => {}),
+    writeTitle,
   };
 });
 
@@ -77,10 +78,13 @@ describe("App", () => {
     readFullscreen.mockResolvedValue(false);
     writeFullscreen.mockReset();
     writeFullscreen.mockResolvedValue(undefined);
+    writeTitle.mockReset();
+    writeTitle.mockResolvedValue(undefined);
     chrome.stop();
     folder.reset();
     galleryUi.reset();
     ui.closeSettings();
+    ui.closeInfo();
     ui.fullscreen = false;
     viewer.reset();
     setReducedMotion(false);
@@ -164,6 +168,41 @@ describe("App", () => {
     await vi.advanceTimersByTimeAsync(CHROME_IDLE_MS);
     expect(toolbarOverlay).toHaveClass("-translate-y-full");
     expect(zoomHudOverlay).toHaveClass("opacity-0", "invisible");
+  });
+
+  it("keeps chrome alive on any key press, even one a child stops propagating", async () => {
+    folder.images = [
+      { path: "/photos/img1.jpg", name: "img1.jpg", modified: 1 },
+      { path: "/photos/img2.jpg", name: "img2.jpg", modified: 2 },
+    ];
+    folder.currentIndex = 0;
+    viewer.status = "ready";
+
+    render(App);
+
+    const toolbarOverlay = screen.getByTestId("toolbar-overlay");
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(CHROME_IDLE_MS);
+    expect(toolbarOverlay).toHaveClass("opacity-0", "invisible");
+
+    // The filmstrip stops arrow-key propagation in the bubble phase; a
+    // capture-phase listener must still register the activity and re-show chrome.
+    const filmstripOption = screen
+      .getByLabelText("Filmstrip")
+      .querySelector<HTMLElement>('[role="option"]');
+    expect(filmstripOption).not.toBeNull();
+    await fireEvent.keyDown(filmstripOption!, { key: "ArrowRight" });
+
+    expect(toolbarOverlay).toHaveClass("opacity-100", "visible");
+
+    // And the countdown is armed again from that key press.
+    await vi.advanceTimersByTimeAsync(CHROME_IDLE_MS);
+    expect(toolbarOverlay).toHaveClass("opacity-0", "invisible");
+
+    // Mouse-wheel scrolling counts as activity too (capture phase, so a child's
+    // wheel-zoom stopping propagation can't suppress it).
+    await fireEvent.wheel(filmstripOption!, { deltaY: 120 });
+    expect(toolbarOverlay).toHaveClass("opacity-100", "visible");
   });
 
   it("hydrates fullscreen state from the native window and toggles the native mode", async () => {
@@ -254,6 +293,71 @@ describe("App", () => {
     render(App);
 
     expect(screen.queryByTestId("enhance-control")).toBeNull();
+  });
+
+  it("toggles the info card via the toolbar button and the I key", async () => {
+    viewer.status = "ready";
+    viewer.path = "/photos/a.jpg";
+
+    render(App);
+
+    expect(screen.queryByTestId("image-info-card")).toBeNull();
+
+    await fireEvent.click(screen.getByRole("button", { name: "Image info" }));
+    expect(ui.infoOpen).toBe(true);
+    await waitFor(() => {
+      expect(screen.getByTestId("image-info-card")).toBeInTheDocument();
+    });
+
+    await fireEvent.keyDown(window, { key: "i" });
+    expect(ui.infoOpen).toBe(false);
+    await waitFor(() => {
+      expect(screen.queryByTestId("image-info-card")).toBeNull();
+    });
+  });
+
+  it("does not mount the info card on launch (closed by default)", () => {
+    viewer.status = "ready";
+    render(App);
+    expect(screen.queryByTestId("image-info-card")).toBeNull();
+  });
+
+  it("Esc closes info first, then settings, then exits fullscreen", async () => {
+    readFullscreen.mockResolvedValue(true);
+    viewer.status = "ready";
+    ui.openInfo();
+    ui.openSettings();
+
+    render(App);
+
+    await waitFor(() => expect(ui.fullscreen).toBe(true));
+
+    await fireEvent.keyDown(window, { key: "Escape" });
+    expect(ui.infoOpen).toBe(false);
+    expect(ui.settingsOpen).toBe(true);
+    expect(ui.fullscreen).toBe(true);
+
+    await fireEvent.keyDown(window, { key: "Escape" });
+    expect(ui.settingsOpen).toBe(false);
+    expect(ui.fullscreen).toBe(true);
+
+    await fireEvent.keyDown(window, { key: "Escape" });
+    expect(writeFullscreen).toHaveBeenCalledWith(false);
+  });
+
+  it("reflects image dimensions in the window title once loaded", async () => {
+    viewer.path = "/photos/shot.jpg";
+    viewer.name = "shot.jpg";
+    viewer.naturalWidth = 4032;
+    viewer.naturalHeight = 3024;
+
+    render(App);
+
+    await waitFor(() => {
+      expect(writeTitle).toHaveBeenCalled();
+    });
+    const titles = writeTitle.mock.calls.map((c) => c[0]);
+    expect(titles.some((t) => String(t).includes("(4032×3024)"))).toBe(true);
   });
 
   it("disables chrome fade transitions when reduced motion is enabled", () => {

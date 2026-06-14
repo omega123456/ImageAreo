@@ -9,6 +9,7 @@ import { readFullscreen, writeFullscreen } from "../utils/native-window";
  */
 class UiStore {
   settingsOpen = $state<boolean>(false);
+  infoOpen = $state<boolean>(false);
   fullscreen = $state<boolean>(false);
 
   openSettings(): void {
@@ -21,6 +22,18 @@ class UiStore {
 
   toggleSettings(): void {
     this.settingsOpen = !this.settingsOpen;
+  }
+
+  openInfo(): void {
+    this.infoOpen = true;
+  }
+
+  closeInfo(): void {
+    this.infoOpen = false;
+  }
+
+  toggleInfo(): void {
+    this.infoOpen = !this.infoOpen;
   }
 
   async initializeFullscreen(): Promise<void> {

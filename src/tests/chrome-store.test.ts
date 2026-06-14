@@ -140,4 +140,56 @@ describe("chrome auto-hide store", () => {
     vi.advanceTimersByTime(CHROME_IDLE_MS * 2);
     expect(chrome.chromeVisible).toBe(true);
   });
+
+  it("holdVisible suspends the idle countdown while hovering a chrome surface", () => {
+    chrome.registerActivity();
+    chrome.holdVisible();
+
+    // Even after well past the idle period, a held surface stays visible.
+    vi.advanceTimersByTime(CHROME_IDLE_MS * 2);
+    expect(chrome.chromeVisible).toBe(true);
+
+    // Pointer activity while held must not re-arm the countdown.
+    chrome.registerActivity();
+    vi.advanceTimersByTime(CHROME_IDLE_MS * 2);
+    expect(chrome.chromeVisible).toBe(true);
+  });
+
+  it("releaseVisible resumes the idle countdown once the last hold ends", () => {
+    chrome.holdVisible();
+    chrome.releaseVisible();
+
+    expect(chrome.chromeVisible).toBe(true);
+    vi.advanceTimersByTime(CHROME_IDLE_MS);
+    expect(chrome.chromeVisible).toBe(false);
+  });
+
+  it("clears outstanding holds when entering fullscreen so the countdown resumes", () => {
+    // Pointer is over a chrome surface (held) when fullscreen is entered. If the
+    // matching pointerleave never fires across the transition, the hold must not
+    // pin chrome visible forever.
+    chrome.holdVisible();
+    chrome.setFullscreen(true);
+    expect(chrome.chromeVisible).toBe(false);
+
+    // Activity reveals chrome in fullscreen, and the idle countdown is armed again
+    // (the stale hold was reconciled).
+    chrome.registerActivity();
+    expect(chrome.chromeVisible).toBe(true);
+    vi.advanceTimersByTime(CHROME_IDLE_MS);
+    expect(chrome.chromeVisible).toBe(false);
+  });
+
+  it("keeps chrome held until every overlapping hold is released", () => {
+    chrome.holdVisible(); // toolbar
+    chrome.holdVisible(); // info card
+    chrome.releaseVisible(); // leave toolbar; info card still held
+
+    vi.advanceTimersByTime(CHROME_IDLE_MS * 2);
+    expect(chrome.chromeVisible).toBe(true);
+
+    chrome.releaseVisible(); // leave info card; countdown resumes
+    vi.advanceTimersByTime(CHROME_IDLE_MS);
+    expect(chrome.chromeVisible).toBe(false);
+  });
 });

@@ -34,6 +34,7 @@ import {
   GearIcon,
   ImageBrokenIcon,
   ImageIcon,
+  InfoIcon,
   MagnifyingGlassIcon,
   MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon,
@@ -86,6 +87,7 @@ export const icons = {
 
   // --- Chrome toggles / panels ---
   filmstrip: FilmStripIcon,
+  info: InfoIcon,
   settings: GearIcon,
   appearance: PaletteIcon,
   close: XIcon,
@@ -112,6 +114,7 @@ export type IconName = keyof typeof icons;
  */
 export const ACTIVE_CAPABLE_ICONS = new Set<IconName>([
   "filmstrip",
+  "info",
   "updateAvailable",
 ]);
 

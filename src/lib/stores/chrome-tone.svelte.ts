@@ -7,6 +7,7 @@ class ChromeTone {
   toolbarDark = $state(true);
   enhanceDark = $state(true);
   sharpenDark = $state(true);
+  infoDark = $state(true);
 }
 
 export const chromeTone = new ChromeTone();

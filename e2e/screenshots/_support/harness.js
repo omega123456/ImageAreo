@@ -64,6 +64,7 @@ function installTauriMock(page, config) {
     const decodedImages = cfg.decodedImages ?? {};
     const sampledImages = cfg.sampledImages ?? {};
     const probedImages = cfg.probedImages ?? {};
+    const imageMetadata = cfg.imageMetadata ?? {};
 
     const invoke = (cmd, args) => {
       switch (cmd) {
@@ -104,6 +105,31 @@ function installTauriMock(page, config) {
         case "peek_decoded_image":
           return Promise.resolve(
             decodedImages[`${args.path}::peek:${args.quality ?? "display"}`] ?? null,
+          );
+        case "read_image_metadata":
+          return Promise.resolve(
+            imageMetadata[args.path] ?? {
+              fileName: basename(args.path),
+              filePath: String(args.path),
+              format: "PNG",
+              fileSizeBytes: 245_120,
+              width: 600,
+              height: 400,
+              pixels: 240_000,
+              colorType: "RGB",
+              bitDepth: 8,
+              orientation: 1,
+              camera: {
+                make: "Canon",
+                model: "Canon EOS R6",
+                lens: "RF24-105mm F4 L IS USM",
+                iso: 400,
+                aperture: 4.0,
+                shutterSpeed: "1/250",
+                focalLength: 50,
+                dateTaken: "2026:06:10 14:32:00",
+              },
+            },
           );
         case "query_file_associations":
           return Promise.resolve(cfg.fileAssociations ?? undefined);
@@ -188,6 +214,7 @@ export async function bootApp(page, opts) {
     decodedImages,
     sampledImages,
     probedImages,
+    imageMetadata,
   } = opts;
 
   await page.emulateMedia({ colorScheme: theme });
@@ -199,6 +226,7 @@ export async function bootApp(page, opts) {
     decodedImages,
     sampledImages,
     probedImages,
+    imageMetadata,
   });
 
   // Wait for DOM ready, not full `load`: the loading-state scenario holds an

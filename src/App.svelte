@@ -9,6 +9,7 @@
   import UpdateToast from "./lib/components/UpdateToast.svelte";
   import Filmstrip from "./lib/components/Filmstrip.svelte";
   import EnhanceControl from "./lib/components/EnhanceControl.svelte";
+  import ImageInfoCard from "./lib/components/ImageInfoCard.svelte";
   import SharpenIndicator from "./lib/components/SharpenIndicator.svelte";
   import { updater } from "./lib/stores/updater.svelte";
   import { galleryUi } from "./lib/stores/gallery-ui.svelte";
@@ -31,6 +32,7 @@
   let imageViewer = $state<ImageViewer | null>(null);
   let enhanceBounds = $state<DOMRect | null>(null);
   let sharpenBounds = $state<DOMRect | null>(null);
+  let infoBounds = $state<DOMRect | null>(null);
   let toolbarHost = $state<HTMLDivElement | null>(null);
   let toolbarBounds = $state<DOMRect | null>(null);
 
@@ -121,8 +123,12 @@
     };
   });
 
-  /** Esc closes the settings drawer first; otherwise exits fullscreen. */
+  /** Esc closes the info card first, then the settings drawer; otherwise exits fullscreen. */
   function handleEscape(): void {
+    if (ui.infoOpen) {
+      ui.closeInfo();
+      return;
+    }
     if (ui.settingsOpen) {
       ui.closeSettings();
       return;
@@ -135,7 +141,6 @@
   }
 
   function handleWindowKeydown(event: KeyboardEvent): void {
-    registerActivity();
     // Shift+F10 is the keyboard context-menu request. Handle it at the window
     // level: the canvas container is non-focusable, so a container-bound
     // listener could never receive this. Only acts when an image is loaded.
@@ -153,7 +158,14 @@
 
   /** Reflect the current image's name and path in the OS window title bar. */
   $effect(() => {
-    void writeTitle(windowTitle(viewer.path, viewer.name));
+    void writeTitle(
+      windowTitle(
+        viewer.path,
+        viewer.name,
+        viewer.naturalWidth,
+        viewer.naturalHeight,
+      ),
+    );
   });
 
   const onKeydown = createKeyHandler(
@@ -167,6 +179,7 @@
       rotateLeft: () => viewer.rotateLeft(),
       rotateRight: () => viewer.rotateRight(),
       toggleFullscreen: () => void ui.toggleFullscreen(),
+      toggleInfo: () => ui.toggleInfo(),
       escape: handleEscape,
     },
     () => viewer.status === "ready",
@@ -229,7 +242,19 @@
   }
 </script>
 
-<svelte:window onkeydown={handleWindowKeydown} onpointermove={registerActivity} />
+<!--
+  Register key and wheel activity in the *capture* phase so it fires for every
+  event regardless of where focus is or whether a child (e.g. the filmstrip's
+  roving navigation, or the viewer's wheel-zoom) stops propagation in the bubble
+  phase. This keeps chrome alive while navigating with the arrow keys or scrolling
+  with the mouse wheel.
+-->
+<svelte:window
+  onkeydowncapture={registerActivity}
+  onwheelcapture={registerActivity}
+  onkeydown={handleWindowKeydown}
+  onpointermove={registerActivity}
+/>
 
 <div class="flex h-screen w-screen min-h-0 flex-col overflow-hidden select-none">
   <main class="relative min-h-0 flex-1 overflow-hidden">
@@ -242,6 +267,7 @@
       enhanceBounds={enhanceBounds}
       toolbarBounds={toolbarBounds}
       sharpenBounds={sharpenBounds}
+      infoBounds={infoBounds}
     />
 
     {#if viewer.status !== "idle"}
@@ -249,7 +275,13 @@
         class={`pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center px-3 ${toolbarChromeClass}`}
         data-testid="toolbar-overlay"
       >
-        <div bind:this={toolbarHost} class="pointer-events-auto">
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div
+          bind:this={toolbarHost}
+          class="pointer-events-auto"
+          onpointerenter={() => chrome.holdVisible()}
+          onpointerleave={() => chrome.releaseVisible()}
+        >
           <Toolbar
             onOpen={handleOpen}
             onOpenFolder={handleOpenFolder}
@@ -264,6 +296,8 @@
             onToggleGallery={() => galleryUi.toggle()}
             galleryVisible={galleryUi.visible}
             fullscreen={ui.fullscreen}
+            infoOpen={ui.infoOpen}
+            onToggleInfo={() => ui.toggleInfo()}
           />
         </div>
       </div>
@@ -302,6 +336,17 @@
       {#if showEnhanceControl}
         <div class="pointer-events-auto">
           <EnhanceControl onBoundsChange={(rect) => (enhanceBounds = rect)} />
+        </div>
+      {/if}
+
+      {#if ui.infoOpen}
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div
+          class={`pointer-events-auto ${toolbarChromeClass}`}
+          onpointerenter={() => chrome.holdVisible()}
+          onpointerleave={() => chrome.releaseVisible()}
+        >
+          <ImageInfoCard onBoundsChange={(rect) => (infoBounds = rect)} />
         </div>
       {/if}
     </div>

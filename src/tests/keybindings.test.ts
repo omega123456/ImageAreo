@@ -33,6 +33,16 @@ describe("resolveBinding", () => {
     expect(resolveBinding(key({ key: "]", metaKey: true }))).toBe("rotateRight");
   });
 
+  it("maps i / I to toggleInfo", () => {
+    expect(resolveBinding(key({ key: "i" }))).toBe("toggleInfo");
+    expect(resolveBinding(key({ key: "I" }))).toBe("toggleInfo");
+  });
+
+  it("does not hijack Ctrl/Cmd+I", () => {
+    expect(resolveBinding(key({ key: "i", ctrlKey: true }))).toBeNull();
+    expect(resolveBinding(key({ key: "i", metaKey: true }))).toBeNull();
+  });
+
   it("maps F11 to fullscreen and Escape to escape", () => {
     expect(resolveBinding(key({ key: "F11" }))).toBe("toggleFullscreen");
     expect(resolveBinding(key({ key: "Escape" }))).toBe("escape");
@@ -70,6 +80,7 @@ function makeActions(): KeyActions {
     rotateLeft: vi.fn(),
     rotateRight: vi.fn(),
     toggleFullscreen: vi.fn(),
+    toggleInfo: vi.fn(),
     escape: vi.fn(),
   };
 }
@@ -121,6 +132,26 @@ describe("createKeyHandler", () => {
 
     expect(actions.escape).toHaveBeenCalledOnce();
     expect(actions.toggleFullscreen).toHaveBeenCalledOnce();
+  });
+
+  it("always fires toggleInfo even when no image is ready", () => {
+    const actions = makeActions();
+    const handler = createKeyHandler(actions, () => false);
+
+    handler(key({ key: "i" }));
+
+    expect(actions.toggleInfo).toHaveBeenCalledOnce();
+  });
+
+  it("no-ops a matched binding whose action is omitted from the bag", () => {
+    const actions = makeActions();
+    delete actions.toggleInfo;
+    const handler = createKeyHandler(actions, () => true);
+
+    const e = key({ key: "i" });
+    const prevent = vi.spyOn(e, "preventDefault");
+    expect(() => handler(e)).not.toThrow();
+    expect(prevent).toHaveBeenCalledOnce();
   });
 
   it("can allow prev/next while not ready without enabling other image actions", () => {

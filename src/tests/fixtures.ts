@@ -137,4 +137,28 @@ export const IPC_FIXTURES: Record<string, IpcHandler> = {
     { ext: "webp", isDefault: false },
   ],
   set_default_associations: () => ({ ok: true }),
+  // Default: a JPEG carrying camera EXIF. Tests override for PNG/no-camera,
+  // loading, or error cases.
+  read_image_metadata: (args) => ({
+    fileName: "IMG_4032.JPG",
+    filePath: String(args?.path ?? "/photos/IMG_4032.JPG"),
+    format: "JPEG",
+    fileSizeBytes: 5_033_165,
+    width: 4032,
+    height: 3024,
+    pixels: 12_192_768,
+    colorType: "RGB",
+    bitDepth: 8,
+    orientation: 1,
+    camera: {
+      make: "Canon",
+      model: "Canon EOS R6",
+      lens: "RF24-105mm F4 L IS USM",
+      iso: 400,
+      aperture: 4.0,
+      shutterSpeed: "1/250",
+      focalLength: 50,
+      dateTaken: "2026:06:10 14:32:00",
+    },
+  }),
 };

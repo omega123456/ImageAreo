@@ -28,6 +28,14 @@ class ChromeStore {
   /** Reactive mirror of the reduced-motion media query. */
   #reducedMotion = $state<boolean>(false);
 
+  /**
+   * Number of chrome surfaces (toolbar / info card) the pointer is currently
+   * hovering. While > 0 the idle countdown is suspended so chrome under the
+   * cursor never fades out from under it. A counter (not a boolean) tolerates
+   * overlapping enter/leave across multiple surfaces.
+   */
+  #holds = 0;
+
   #timer: ReturnType<typeof setTimeout> | null = null;
   #motionQuery: MediaQueryList | null = null;
   #removeMotionListener: (() => void) | null = null;
@@ -49,7 +57,36 @@ class ChromeStore {
    */
   registerActivity(): void {
     this.#idle = false;
+    // While the pointer rests on a chrome surface, keep it shown without arming
+    // the countdown — a stationary hover fires no further activity, so a timer
+    // here would hide the very chrome the user is pointing at.
+    if (this.#holds > 0) {
+      this.#clearTimer();
+      return;
+    }
     this.#restartTimer();
+  }
+
+  /**
+   * Begin holding chrome visible (pointer entered a chrome surface). Shows the
+   * chrome and suspends the idle countdown until the matching
+   * {@link releaseVisible}.
+   */
+  holdVisible(): void {
+    this.#holds += 1;
+    this.#idle = false;
+    this.#clearTimer();
+  }
+
+  /**
+   * End one hold (pointer left a chrome surface). When the last hold is
+   * released, resume the normal idle countdown.
+   */
+  releaseVisible(): void {
+    this.#holds = Math.max(0, this.#holds - 1);
+    if (this.#holds === 0) {
+      this.registerActivity();
+    }
   }
 
   /**
@@ -61,6 +98,11 @@ class ChromeStore {
     if (fullscreen) {
       this.#idle = true;
       this.#clearTimer();
+      // The chrome surfaces become non-interactive (translated off-screen,
+      // pointer-events-none) on this transition, and the browser may not deliver
+      // a matching `pointerleave`. Reconcile holds here so a stale hold can't
+      // pin chrome visible and suppress the idle countdown indefinitely.
+      this.#holds = 0;
       return;
     }
 
@@ -97,6 +139,7 @@ class ChromeStore {
   stop(): void {
     this.#clearTimer();
     this.#idle = false;
+    this.#holds = 0;
     this.#removeMotionListener?.();
     this.#removeMotionListener = null;
     this.#motionQuery = null;

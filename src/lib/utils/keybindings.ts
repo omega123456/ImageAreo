@@ -25,6 +25,12 @@ export interface KeyActions {
   rotateLeft: () => void;
   rotateRight: () => void;
   toggleFullscreen: () => void;
+  /**
+   * Toggle the image-info card (always active; works with no image).
+   * Optional so the action bag can omit it until the card is wired in (Phase 5);
+   * an unbound `toggleInfo` simply no-ops.
+   */
+  toggleInfo?: () => void;
   /** Close any open overlay / exit fullscreen (Esc). */
   escape: () => void;
 }
@@ -70,6 +76,9 @@ export function resolveBinding(e: KeyboardEvent): KeyBinding {
       return "fit";
     case "1":
       return "actualSize";
+    case "i":
+    case "I":
+      return "toggleInfo";
     case "F11":
       return "toggleFullscreen";
     case "Escape":
@@ -83,6 +92,7 @@ export function resolveBinding(e: KeyboardEvent): KeyBinding {
 const ALWAYS_ACTIVE: ReadonlySet<KeyBinding> = new Set<KeyBinding>([
   "escape",
   "toggleFullscreen",
+  "toggleInfo",
 ]);
 
 /** True when focus is in a text-editing control that should keep the keys. */
@@ -118,6 +128,6 @@ export function createKeyHandler(
     }
 
     e.preventDefault();
-    actions[binding]();
+    actions[binding]?.();
   };
 }

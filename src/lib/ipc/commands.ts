@@ -10,6 +10,7 @@ export const IPC_COMMANDS = {
   generateThumbnail: "generate_thumbnail",
   copyImageToClipboard: "copy_image_to_clipboard",
   revealInFileManager: "reveal_in_file_manager",
+  readImageMetadata: "read_image_metadata",
 } as const;
 
 /**
@@ -155,4 +156,54 @@ export interface RevealInFileManagerRequest {
 
 export interface SetDefaultAssociationsRequest {
   exts: string[];
+}
+
+/**
+ * Camera/EXIF metadata for an image. Every field is optional; the backend only
+ * emits this object (as `ImageMetadata.camera`) when at least one field is
+ * present. Mirrors the Rust `CameraMetadata` camelCase serialization.
+ */
+export interface CameraMetadata {
+  make?: string;
+  model?: string;
+  lens?: string;
+  /** ISO speed rating. */
+  iso?: number;
+  /** Aperture as an f-number (e.g. `4.0`). */
+  aperture?: number;
+  /** Exposure time, formatted on the frontend (e.g. `1/250 s`). */
+  shutterSpeed?: string;
+  /** Focal length in millimetres. */
+  focalLength?: number;
+  /** EXIF capture datetime string. */
+  dateTaken?: string;
+}
+
+/**
+ * Full on-demand metadata for a single image returned by `read_image_metadata`.
+ * Mirrors the Rust `ImageMetadata` camelCase serialization. `colorType` and
+ * `bitDepth` are `null` when not determinable header-side; `camera` is `null`
+ * when the file carries no camera EXIF.
+ */
+export interface ImageMetadata {
+  fileName: string;
+  filePath: string;
+  /** Container format (e.g. `JPEG`, `PNG`, `HEIC`). */
+  format: string;
+  fileSizeBytes: number;
+  width: number;
+  height: number;
+  /** `width * height` reported by the backend. */
+  pixels: number;
+  /** e.g. `RGB`, `RGBA`, `Grayscale`; `null` when not determinable. */
+  colorType: string | null;
+  /** Bits per channel; `null` when not determinable. */
+  bitDepth: number | null;
+  /** EXIF orientation (1–8). */
+  orientation: number;
+  camera: CameraMetadata | null;
+}
+
+export interface ReadImageMetadataRequest {
+  path: string;
 }

@@ -29,6 +29,8 @@
     toolbarBounds?: DOMRect | null;
     /** Viewport rect of the Sharpening pill, sampled independently like enhance. */
     sharpenBounds?: DOMRect | null;
+    /** Viewport rect of the image-info card, sampled independently like enhance. */
+    infoBounds?: DOMRect | null;
   }
 
   let {
@@ -39,6 +41,7 @@
     enhanceBounds = null,
     toolbarBounds = null,
     sharpenBounds = null,
+    infoBounds = null,
   }: Props = $props();
 
   let container = $state<HTMLDivElement | null>(null);
@@ -95,57 +98,45 @@
     const surroundLum = cssColorLuminance(surround);
 
     if (viewer.status === "ready" && samplerReady && samplerImg) {
-      const toolbarBand =
-        toolbarBounds
-          ? rectWithinContainer(toolbarBounds, containerRect)
-          : {
-              x: containerRect.width * 0.12,
-              y: 4,
-              w: containerRect.width * 0.76,
-              h: Math.min(64, containerRect.height),
-            };
-      if (toolbarBand) {
-        const toolbarLum = sampleTone(toolbarBand);
-        if (toolbarLum !== null) {
-          chromeTone.toolbarDark = toolbarLum < 0.55;
-        } else if (surroundLum !== null) {
-          chromeTone.toolbarDark = surroundLum < 0.55;
-        }
-      } else if (surroundLum !== null) {
-        chromeTone.toolbarDark = surroundLum < 0.55;
-      }
-
-      if (enhanceBounds) {
-        const enhanceRect = rectWithinContainer(enhanceBounds, containerRect);
-        if (enhanceRect) {
-          const enhanceLum = sampleTone(enhanceRect);
-          if (enhanceLum !== null) {
-            chromeTone.enhanceDark = enhanceLum < 0.55;
-          } else if (surroundLum !== null) {
-            chromeTone.enhanceDark = surroundLum < 0.55;
+      // Resolve a chrome element's tone from the pixels beneath it: sample the
+      // bounds when available, else fall back to the surround brightness. The
+      // band is either the element's container-relative rect or a pre-resolved
+      // band (the toolbar synthesizes a default when its bounds are unknown).
+      const applyTone = (
+        band: { x: number; y: number; w: number; h: number } | null,
+        setDark: (dark: boolean) => void,
+      ): void => {
+        if (band) {
+          const lum = sampleTone(band);
+          if (lum !== null) {
+            setDark(lum < 0.55);
+            return;
           }
-        } else if (surroundLum !== null) {
-          chromeTone.enhanceDark = surroundLum < 0.55;
         }
-      } else if (surroundLum !== null) {
-        chromeTone.enhanceDark = surroundLum < 0.55;
-      }
+        if (surroundLum !== null) setDark(surroundLum < 0.55);
+      };
 
-      if (sharpenBounds) {
-        const sharpenRect = rectWithinContainer(sharpenBounds, containerRect);
-        if (sharpenRect) {
-          const sharpenLum = sampleTone(sharpenRect);
-          if (sharpenLum !== null) {
-            chromeTone.sharpenDark = sharpenLum < 0.55;
-          } else if (surroundLum !== null) {
-            chromeTone.sharpenDark = surroundLum < 0.55;
-          }
-        } else if (surroundLum !== null) {
-          chromeTone.sharpenDark = surroundLum < 0.55;
-        }
-      } else if (surroundLum !== null) {
-        chromeTone.sharpenDark = surroundLum < 0.55;
-      }
+      const toolbarBand = toolbarBounds
+        ? rectWithinContainer(toolbarBounds, containerRect)
+        : {
+            x: containerRect.width * 0.12,
+            y: 4,
+            w: containerRect.width * 0.76,
+            h: Math.min(64, containerRect.height),
+          };
+      applyTone(toolbarBand, (dark) => (chromeTone.toolbarDark = dark));
+      applyTone(
+        enhanceBounds ? rectWithinContainer(enhanceBounds, containerRect) : null,
+        (dark) => (chromeTone.enhanceDark = dark),
+      );
+      applyTone(
+        sharpenBounds ? rectWithinContainer(sharpenBounds, containerRect) : null,
+        (dark) => (chromeTone.sharpenDark = dark),
+      );
+      applyTone(
+        infoBounds ? rectWithinContainer(infoBounds, containerRect) : null,
+        (dark) => (chromeTone.infoDark = dark),
+      );
 
       return;
     }
@@ -156,6 +147,7 @@
       chromeTone.toolbarDark = dark;
       chromeTone.enhanceDark = dark;
       chromeTone.sharpenDark = dark;
+      chromeTone.infoDark = dark;
     }
   }
 
@@ -272,6 +264,10 @@
       sharpenBounds?.top,
       sharpenBounds?.width,
       sharpenBounds?.height,
+      infoBounds?.left,
+      infoBounds?.top,
+      infoBounds?.width,
+      infoBounds?.height,
     ];
     void _deps;
     if (typeof window === "undefined") return;

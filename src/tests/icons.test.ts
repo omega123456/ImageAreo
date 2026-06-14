@@ -24,6 +24,7 @@ const REQUIRED_NAMES: IconName[] = [
   "rotateLeft",
   "rotateRight",
   "filmstrip",
+  "info",
   "settings",
   "appearance",
   "close",
@@ -56,6 +57,8 @@ describe("semantic icon module", () => {
     // Toggle/active states exist for the filmstrip toggle and the update badge.
     expect(ACTIVE_CAPABLE_ICONS.has("filmstrip")).toBe(true);
     expect(ACTIVE_CAPABLE_ICONS.has("updateAvailable")).toBe(true);
+    // The info card toggle fills when the card is open.
+    expect(ACTIVE_CAPABLE_ICONS.has("info")).toBe(true);
     // Every active-capable name must itself resolve to a component.
     for (const name of ACTIVE_CAPABLE_ICONS) {
       expect(icons[name]).toBeDefined();
@@ -65,6 +68,8 @@ describe("semantic icon module", () => {
   it("uses the Fill weight for active-capable icons only when active", () => {
     expect(iconWeightFor("filmstrip", true)).toBe(ICON_WEIGHT.fill);
     expect(iconWeightFor("filmstrip", false)).toBe(ICON_WEIGHT.regular);
+    expect(iconWeightFor("info", true)).toBe(ICON_WEIGHT.fill);
+    expect(iconWeightFor("info", false)).toBe(ICON_WEIGHT.regular);
   });
 
   it("never uses the Fill weight for non-active-capable icons", () => {

@@ -450,6 +450,8 @@ class ViewerStore {
     this.path = path;
     this.name = name;
     this.status = "loading";
+    this.naturalWidth = 0;
+    this.naturalHeight = 0;
     this.errorReason = null;
     this.upgrading = false;
     this.#preserveTransformLoad = false;

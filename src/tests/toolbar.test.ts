@@ -24,6 +24,7 @@ describe("Toolbar", () => {
       "Rotate left",
       "Rotate right",
       "Toggle filmstrip",
+      "Image info",
       "Settings",
     ]) {
       expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
@@ -117,6 +118,25 @@ describe("Toolbar", () => {
   it("reflects the filmstrip toggle pressed state", () => {
     render(Toolbar, { props: { galleryVisible: true } });
     expect(screen.getByRole("button", { name: "Toggle filmstrip" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("renders the Info toggle and fires its callback", async () => {
+    const onToggleInfo = vi.fn();
+    render(Toolbar, { props: { onToggleInfo } });
+
+    const infoButton = screen.getByRole("button", { name: "Image info" });
+    expect(infoButton).toHaveAttribute("aria-pressed", "false");
+
+    await fireEvent.click(infoButton);
+    expect(onToggleInfo).toHaveBeenCalledOnce();
+  });
+
+  it("reflects the Info toggle pressed state when open", () => {
+    render(Toolbar, { props: { infoOpen: true } });
+    expect(screen.getByRole("button", { name: "Image info" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );

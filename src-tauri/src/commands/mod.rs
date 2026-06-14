@@ -125,6 +125,99 @@ pub async fn probe_image(path: String) -> Result<ProbedImage, DecodeImageError> 
     Ok(ProbedImage::from(probed))
 }
 
+/// Camera EXIF facts for the info card. Serialized camelCase; the object is only
+/// present (`camera: Some`) when the image carries at least one camera field.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CameraMetadata {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub make: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lens: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub iso: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aperture: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shutter_speed: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub focal_length: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub date_taken: Option<String>,
+}
+
+impl From<image::CameraMetadataParts> for CameraMetadata {
+    fn from(parts: image::CameraMetadataParts) -> Self {
+        Self {
+            make: parts.make,
+            model: parts.model,
+            lens: parts.lens,
+            iso: parts.iso,
+            aperture: parts.aperture,
+            shutter_speed: parts.shutter_speed,
+            focal_length: parts.focal_length,
+            date_taken: parts.date_taken,
+        }
+    }
+}
+
+/// On-demand, read-only metadata for one image. Serialized camelCase; assembled
+/// without decoding pixels. `colorType`/`bitDepth` are best-effort (`null` for
+/// formats the header reader cannot inspect); `camera` is `null` when no camera
+/// EXIF is present.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageMetadata {
+    pub file_name: String,
+    pub file_path: String,
+    pub format: String,
+    pub file_size_bytes: u64,
+    pub width: u32,
+    pub height: u32,
+    pub pixels: u64,
+    pub color_type: Option<String>,
+    pub bit_depth: Option<u32>,
+    pub orientation: u16,
+    pub camera: Option<CameraMetadata>,
+}
+
+impl From<image::ImageMetadataParts> for ImageMetadata {
+    fn from(parts: image::ImageMetadataParts) -> Self {
+        Self {
+            file_name: parts.file_name,
+            file_path: parts.file_path,
+            format: parts.format,
+            file_size_bytes: parts.file_size_bytes,
+            width: parts.width,
+            height: parts.height,
+            pixels: parts.pixels,
+            color_type: parts.color_type,
+            bit_depth: parts.bit_depth,
+            orientation: parts.orientation,
+            camera: parts.camera.map(CameraMetadata::from),
+        }
+    }
+}
+
+/// Return on-demand, read-only metadata for `path` (file size, header-only
+/// dimensions, best-effort color type/bit depth, orientation, camera EXIF)
+/// without decoding pixels and without touching the decode scheduler. Runs on a
+/// blocking task like [`probe_image`].
+#[tauri::command(rename_all = "camelCase")]
+pub async fn read_image_metadata(path: String) -> Result<ImageMetadata, DecodeImageError> {
+    let path = std::path::PathBuf::from(path);
+    let parts = tauri::async_runtime::spawn_blocking(move || image::gather_image_metadata(&path))
+        .await
+        .map_err(|err| DecodeImageError {
+            code: "decode_failed",
+            message: format!("metadata task failed: {err}"),
+        })??;
+
+    Ok(ImageMetadata::from(parts))
+}
+
 #[tauri::command(rename_all = "camelCase")]
 pub async fn scan_folder(
     path: String,

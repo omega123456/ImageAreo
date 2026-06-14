@@ -14,13 +14,23 @@ export async function writeFullscreen(fullscreen: boolean): Promise<void> {
 /**
  * Build the window-title string for the currently loaded image. Shows the
  * filename followed by its full filesystem path, falling back to the bare app
- * name when nothing is open. Pure logic — kept separate from {@link writeTitle}
- * so it is testable without the OS window call.
+ * name when nothing is open. When both dimensions are known (> 0), they are
+ * shown as ` (W×H)` immediately after the filename. Pure logic — kept separate
+ * from {@link writeTitle} so it is testable without the OS window call.
  */
-export function windowTitle(path: string | null, name: string | null): string {
+export function windowTitle(
+  path: string | null,
+  name: string | null,
+  width?: number | null,
+  height?: number | null,
+): string {
   if (!path) return APP_TITLE;
   const label = name ?? path;
-  return `${label} — ${path} — ${APP_TITLE}`;
+  const dims =
+    width != null && height != null && width > 0 && height > 0
+      ? ` (${width}×${height})`
+      : "";
+  return `${label}${dims} — ${path} — ${APP_TITLE}`;
 }
 
 export async function writeTitle(title: string): Promise<void> {

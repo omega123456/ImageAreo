@@ -16,8 +16,10 @@
     onRotateRight?: () => void;
     onSettings?: () => void;
     onToggleGallery?: () => void;
+    onToggleInfo?: () => void;
     galleryVisible?: boolean;
     fullscreen?: boolean;
+    infoOpen?: boolean;
   }
 
   let {
@@ -32,8 +34,10 @@
     onRotateRight,
     onSettings,
     onToggleGallery,
+    onToggleInfo,
     galleryVisible = true,
     fullscreen = false,
+    infoOpen = false,
   }: Props = $props();
 
   const OpenFileIcon = icons.openFile;
@@ -47,6 +51,7 @@
   const RotateLeftIcon = icons.rotateLeft;
   const RotateRightIcon = icons.rotateRight;
   const FilmstripIcon = icons.filmstrip;
+  const InfoIcon = icons.info;
   const SettingsIcon = icons.settings;
 
   /** Floating-toolbar icons render slightly larger than the 16px chrome default. */
@@ -190,6 +195,22 @@
     <FilmstripIcon
       size={TOOLBAR_ICON_SIZE}
       weight={iconWeightFor("filmstrip", galleryVisible)}
+      aria-hidden="true"
+      class={glyphClass}
+    />
+  </button>
+
+  <button
+    type="button"
+    class="{buttonClass} {infoOpen ? activeChipClass : ''}"
+    aria-label="Image info"
+    aria-pressed={infoOpen}
+    title="Image info (I)"
+    onclick={onToggleInfo}
+  >
+    <InfoIcon
+      size={TOOLBAR_ICON_SIZE}
+      weight={iconWeightFor("info", infoOpen)}
       aria-hidden="true"
       class={glyphClass}
     />

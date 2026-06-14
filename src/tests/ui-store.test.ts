@@ -22,6 +22,7 @@ describe("ui store", () => {
 
   afterEach(() => {
     ui.closeSettings();
+    ui.closeInfo();
     ui.fullscreen = false;
   });
 
@@ -38,6 +39,32 @@ describe("ui store", () => {
     expect(ui.settingsOpen).toBe(true);
     ui.toggleSettings();
     expect(ui.settingsOpen).toBe(false);
+  });
+
+  it("opens, closes and toggles the info card independently of settings", () => {
+    expect(ui.infoOpen).toBe(false);
+
+    ui.openInfo();
+    expect(ui.infoOpen).toBe(true);
+
+    ui.closeInfo();
+    expect(ui.infoOpen).toBe(false);
+
+    ui.toggleInfo();
+    expect(ui.infoOpen).toBe(true);
+    ui.toggleInfo();
+    expect(ui.infoOpen).toBe(false);
+  });
+
+  it("does not couple info and settings open state", () => {
+    ui.openSettings();
+    ui.openInfo();
+    expect(ui.settingsOpen).toBe(true);
+    expect(ui.infoOpen).toBe(true);
+
+    ui.closeInfo();
+    expect(ui.settingsOpen).toBe(true);
+    expect(ui.infoOpen).toBe(false);
   });
 
   it("syncs fullscreen from the native window on startup", async () => {

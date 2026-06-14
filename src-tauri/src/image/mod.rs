@@ -16,7 +16,8 @@ use fast_image_resize::images::Image as FirImage;
 use heic::{DecoderConfig, PixelLayout};
 use image::codecs::jpeg::JpegEncoder;
 use image::{
-    DynamicImage, GrayImage, ImageBuffer, ImageFormat, ImageReader, Rgb, RgbImage, RgbaImage,
+    DynamicImage, GrayImage, ImageBuffer, ImageDecoder, ImageFormat, ImageReader, Rgb, RgbImage,
+    RgbaImage,
 };
 use jpeg_decoder::{Decoder as JpegDecoder, PixelFormat as JpegPixelFormat};
 use serde::{Deserialize, Serialize};
@@ -554,6 +555,194 @@ fn is_raw_extension(path: &Path) -> bool {
                 | "3fr"
         )
     )
+}
+
+/// True full-image dimensions for a RAW file. The generic `imagesize`/`image`
+/// probe and the EXIF reader only see IFD0, which in a DNG (and most TIFF-based
+/// RAWs) is the small embedded thumbnail — so a 50 MP file reports a 256×171
+/// preview size. This recovers the real size from the TIFF SubIFDs first, then
+/// falls back to the EXIF `PixelX/YDimension` tags. Both are header-only (no
+/// pixel decompression). Returns `None` when neither yields usable dimensions, so
+/// the caller keeps the probe result.
+fn raw_full_dimensions(path: &Path) -> Option<(u32, u32)> {
+    tiff_largest_dimensions(path).or_else(|| exif_pixel_dimensions(path))
+}
+
+/// Upper bound on SubIFD offsets read from a single TIFF SubIFDs entry. Real RAWs
+/// have a handful; this only guards against a malformed (untrusted) count forcing
+/// a huge allocation.
+const MAX_SUBIFD_OFFSETS: u32 = 4096;
+
+/// Largest image dimensions declared anywhere in a TIFF-based file, found by
+/// walking IFD0, its chained IFDs, and its SubIFDs (tag 0x014A) and taking the
+/// biggest `ImageWidth`×`ImageLength`. This is what surfaces a DNG's full sensor
+/// image, which lives in a SubIFD rather than the (thumbnail) IFD0. Header-only:
+/// reads just the small IFD structures via seeks, never the pixel strips. Returns
+/// `None` for non-TIFF containers (e.g. CR3, RAF) or on any parse error.
+fn tiff_largest_dimensions(path: &Path) -> Option<(u32, u32)> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let mut file = std::fs::File::open(path).ok()?;
+
+    let mut header = [0u8; 8];
+    file.read_exact(&mut header).ok()?;
+    let little = match &header[0..2] {
+        b"II" => true,
+        b"MM" => false,
+        _ => return None,
+    };
+    // Only classic TIFF (magic 42); BigTIFF (43) and other containers bail out.
+    if read_u16(&header[2..4], little) != 42 {
+        return None;
+    }
+
+    let mut best: Option<(u32, u32)> = None;
+    let mut to_visit = vec![read_u32(&header[4..8], little)];
+    let mut guard = 0u32;
+
+    while let Some(offset) = to_visit.pop() {
+        guard += 1;
+        if offset == 0 || guard > 64 {
+            continue;
+        }
+
+        if file.seek(SeekFrom::Start(u64::from(offset))).is_err() {
+            continue;
+        }
+        let mut count_bytes = [0u8; 2];
+        if file.read_exact(&mut count_bytes).is_err() {
+            continue;
+        }
+        let count = read_u16(&count_bytes, little) as usize;
+        let mut entries = vec![0u8; count * 12];
+        if file.read_exact(&mut entries).is_err() {
+            continue;
+        }
+        let mut next_bytes = [0u8; 4];
+        let next = if file.read_exact(&mut next_bytes).is_ok() {
+            read_u32(&next_bytes, little)
+        } else {
+            0
+        };
+
+        let mut width = None;
+        let mut height = None;
+        for entry in entries.chunks_exact(12) {
+            let tag = read_u16(&entry[0..2], little);
+            let typ = read_u16(&entry[2..4], little);
+            let value_count = read_u32(&entry[4..8], little);
+            match tag {
+                256 => width = read_ifd_uint(&entry[8..12], typ, little),
+                257 => height = read_ifd_uint(&entry[8..12], typ, little),
+                // SubIFDs (0x014A): a list of LONG offsets to further IFDs.
+                330 => collect_subifd_offsets(
+                    &mut file,
+                    &entry[8..12],
+                    value_count,
+                    little,
+                    &mut to_visit,
+                ),
+                _ => {}
+            }
+        }
+
+        if let (Some(w), Some(h)) = (width, height) {
+            if w > 0
+                && h > 0
+                && best.map_or(true, |(bw, bh)| {
+                    u64::from(w) * u64::from(h) > u64::from(bw) * u64::from(bh)
+                })
+            {
+                best = Some((w, h));
+            }
+        }
+
+        if next != 0 {
+            to_visit.push(next);
+        }
+    }
+
+    best
+}
+
+/// Push the SubIFD offsets referenced by a TIFF SubIFDs entry onto `out`. A single
+/// offset is stored inline in the entry's value field; multiple offsets live at the
+/// offset the value field points to. Best-effort: any read failure is ignored.
+fn collect_subifd_offsets(
+    file: &mut std::fs::File,
+    value_field: &[u8],
+    count: u32,
+    little: bool,
+    out: &mut Vec<u32>,
+) {
+    use std::io::{Read, Seek, SeekFrom};
+
+    if count == 0 {
+        return;
+    }
+    if count == 1 {
+        out.push(read_u32(value_field, little));
+        return;
+    }
+
+    // `count` is read straight from the (untrusted) TIFF entry, so clamp it before
+    // sizing the read buffer: a malformed file could otherwise declare a count near
+    // u32::MAX and force a multi-GB allocation. No real RAW has anywhere near this
+    // many SubIFDs; the IFD-walk `guard` caps how many we actually process anyway.
+    let count = count.min(MAX_SUBIFD_OFFSETS) as usize;
+    let mut buf = vec![0u8; count * 4];
+
+    let ptr = read_u32(value_field, little);
+    if file.seek(SeekFrom::Start(u64::from(ptr))).is_err() {
+        return;
+    }
+    if file.read_exact(&mut buf).is_err() {
+        return;
+    }
+    for chunk in buf.chunks_exact(4) {
+        out.push(read_u32(chunk, little));
+    }
+}
+
+fn read_u16(bytes: &[u8], little: bool) -> u16 {
+    let pair = [bytes[0], bytes[1]];
+    if little {
+        u16::from_le_bytes(pair)
+    } else {
+        u16::from_be_bytes(pair)
+    }
+}
+
+fn read_u32(bytes: &[u8], little: bool) -> u32 {
+    let quad = [bytes[0], bytes[1], bytes[2], bytes[3]];
+    if little {
+        u32::from_le_bytes(quad)
+    } else {
+        u32::from_be_bytes(quad)
+    }
+}
+
+/// Read a single unsigned integer from a TIFF entry's value field for the two
+/// numeric types `ImageWidth`/`ImageLength` use: SHORT (3) and LONG (4).
+fn read_ifd_uint(value_field: &[u8], typ: u16, little: bool) -> Option<u32> {
+    match typ {
+        3 => Some(u32::from(read_u16(value_field, little))),
+        4 => Some(read_u32(value_field, little)),
+        _ => None,
+    }
+}
+
+/// Full-image pixel dimensions from EXIF (`PixelXDimension`/`PixelYDimension`).
+/// Header-only fallback for RAWs whose container isn't a plain TIFF. Returns
+/// `None` when the tags are absent or unreadable.
+fn exif_pixel_dimensions(path: &Path) -> Option<(u32, u32)> {
+    let file = std::fs::File::open(path).ok()?;
+    let mut reader = BufReader::new(file);
+    let exif = ExifReader::new().read_from_container(&mut reader).ok()?;
+
+    let width = exif_uint(&exif, Tag::PixelXDimension).filter(|&w| w > 0)?;
+    let height = exif_uint(&exif, Tag::PixelYDimension).filter(|&h| h > 0)?;
+    Some((width, height))
 }
 
 pub fn load_supported_image_path(path: &Path) -> Result<LoadedImageData, DecodeImageError> {
@@ -1402,6 +1591,236 @@ fn read_orientation(path: &Path) -> u16 {
     read_exif_metadata(path, 0).orientation
 }
 
+/// Camera EXIF facts extracted header-side for the on-demand info card. Every
+/// field is optional; the whole struct is only produced when at least one field
+/// is present (see [`read_camera_metadata`]).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct CameraMetadataParts {
+    pub make: Option<String>,
+    pub model: Option<String>,
+    pub lens: Option<String>,
+    pub iso: Option<u32>,
+    pub aperture: Option<f64>,
+    /// The EXIF exposure time as a raw rational string (e.g. `"1/250"` or `"2"`);
+    /// the frontend formats it to `1/250 s`.
+    pub shutter_speed: Option<String>,
+    pub focal_length: Option<f64>,
+    pub date_taken: Option<String>,
+}
+
+impl CameraMetadataParts {
+    fn is_empty(&self) -> bool {
+        *self == CameraMetadataParts::default()
+    }
+}
+
+/// The full set of on-demand metadata facts assembled for one image path. Pure
+/// data; the command layer maps it onto the serializable IPC struct.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImageMetadataParts {
+    pub file_name: String,
+    pub file_path: String,
+    pub format: String,
+    pub file_size_bytes: u64,
+    pub width: u32,
+    pub height: u32,
+    pub pixels: u64,
+    pub color_type: Option<String>,
+    pub bit_depth: Option<u32>,
+    pub orientation: u16,
+    pub camera: Option<CameraMetadataParts>,
+}
+
+/// Assemble lightweight, read-only metadata for one image: file size + name,
+/// header-only dimensions (via the existing probe path — no pixel decode),
+/// best-effort color type / bit depth from the `image` crate decoder header,
+/// EXIF orientation, and camera EXIF. Never decodes pixels and never touches the
+/// decode scheduler or cache.
+pub fn gather_image_metadata(path: &Path) -> Result<ImageMetadataParts, DecodeImageError> {
+    let fs_meta = std::fs::metadata(path).map_err(|err| {
+        DecodeImageError::io(format!(
+            "failed to stat {}: {err}",
+            path.display()
+        ))
+    })?;
+    if !fs_meta.is_file() {
+        return Err(DecodeImageError::io(format!(
+            "not a file: {}",
+            path.display()
+        )));
+    }
+
+    let probed = probe::probe(path)?;
+    // For RAW the probe reads the embedded thumbnail IFD (tiny, e.g. 256×171 for a
+    // 50 MP file), so prefer the EXIF main-image dimensions when available.
+    let (width, height) = if is_raw_extension(path) {
+        raw_full_dimensions(path).unwrap_or((probed.width, probed.height))
+    } else {
+        (probed.width, probed.height)
+    };
+    let pixels = u64::from(width) * u64::from(height);
+    let (color_type, bit_depth) = read_header_color(path);
+    let (camera, orientation) = match read_camera_metadata(path) {
+        Some((parts, orientation)) => {
+            let camera = if parts.is_empty() { None } else { Some(parts) };
+            (camera, orientation)
+        }
+        None => (None, 1),
+    };
+
+    Ok(ImageMetadataParts {
+        file_name: file_name_of(path),
+        file_path: path.to_string_lossy().into_owned(),
+        format: format_label(path),
+        file_size_bytes: fs_meta.len(),
+        width,
+        height,
+        pixels,
+        color_type,
+        bit_depth,
+        orientation,
+        camera,
+    })
+}
+
+fn file_name_of(path: &Path) -> String {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .map(str::to_owned)
+        .unwrap_or_default()
+}
+
+/// Human-facing format label derived from the file extension. Falls back to the
+/// uppercased extension for anything not explicitly mapped, and to `"Unknown"`
+/// when there is no extension.
+fn format_label(path: &Path) -> String {
+    match normalized_extension(path).ok().as_deref() {
+        Some("jpg") | Some("jpeg") => "JPEG".to_owned(),
+        Some("png") => "PNG".to_owned(),
+        Some("gif") => "GIF".to_owned(),
+        Some("webp") => "WebP".to_owned(),
+        Some("avif") => "AVIF".to_owned(),
+        Some("tif") | Some("tiff") => "TIFF".to_owned(),
+        Some("bmp") => "BMP".to_owned(),
+        Some("ico") => "ICO".to_owned(),
+        Some("heic") | Some("heif") => "HEIC".to_owned(),
+        Some("jxl") => "JPEG XL".to_owned(),
+        Some(ext) => ext.to_ascii_uppercase(),
+        None => "Unknown".to_owned(),
+    }
+}
+
+/// Read color type + bit-depth-per-channel header-side via the `image` crate
+/// decoder, without decoding pixels. Returns `(None, None)` for formats the
+/// `image` crate cannot inspect (HEIC/JXL/RAW) — a defined graceful-degradation
+/// contract, not an error (the rows are simply omitted by the frontend).
+fn read_header_color(path: &Path) -> (Option<String>, Option<u32>) {
+    let reader = match ImageReader::open(path).and_then(ImageReader::with_guessed_format) {
+        Ok(reader) => reader,
+        Err(_) => return (None, None),
+    };
+    let decoder = match reader.into_decoder() {
+        Ok(decoder) => decoder,
+        Err(_) => return (None, None),
+    };
+    let color = decoder.color_type();
+    (Some(color_type_label(color)), Some(bits_per_channel(color)))
+}
+
+fn color_type_label(color: image::ColorType) -> String {
+    use image::ColorType::*;
+    match color {
+        L8 | L16 => "Grayscale",
+        La8 | La16 => "Grayscale + Alpha",
+        Rgb8 | Rgb16 | Rgb32F => "RGB",
+        Rgba8 | Rgba16 | Rgba32F => "RGBA",
+        _ => "Unknown",
+    }
+    .to_owned()
+}
+
+fn bits_per_channel(color: image::ColorType) -> u32 {
+    u32::from(color.bits_per_pixel()) / u32::from(color.channel_count().max(1))
+}
+
+/// Extract camera EXIF fields, mapping each EXIF tag to a typed optional field.
+/// Returns `None` when the file has no readable EXIF container at all; an empty
+/// (all-`None`) result is still `Some` here and is filtered by the caller.
+/// Parse the EXIF container once and return both the camera fields and the EXIF
+/// orientation derived from the same parsed container. `None` is returned only
+/// when there is no readable EXIF container (file missing/unreadable or no EXIF),
+/// in which case the caller treats orientation as the default `1`.
+fn read_camera_metadata(path: &Path) -> Option<(CameraMetadataParts, u16)> {
+    let file = std::fs::File::open(path).ok()?;
+    let mut reader = BufReader::new(file);
+    let exif = ExifReader::new().read_from_container(&mut reader).ok()?;
+
+    let parts = CameraMetadataParts {
+        make: exif_string(&exif, Tag::Make),
+        model: exif_string(&exif, Tag::Model),
+        lens: exif_string(&exif, Tag::LensModel),
+        iso: exif_uint(&exif, Tag::PhotographicSensitivity),
+        aperture: exif_rational_f64(&exif, Tag::FNumber),
+        shutter_speed: exif_rational_string(&exif, Tag::ExposureTime),
+        focal_length: exif_rational_f64(&exif, Tag::FocalLength),
+        date_taken: exif_string(&exif, Tag::DateTimeOriginal),
+    };
+
+    Some((parts, orientation_from_exif(&exif)))
+}
+
+fn exif_string(exif: &Exif, tag: Tag) -> Option<String> {
+    let field = exif.get_field(tag, In::PRIMARY)?;
+    let text = field.display_value().to_string();
+    let trimmed = text.trim().trim_matches('"').trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_owned())
+    }
+}
+
+fn exif_uint(exif: &Exif, tag: Tag) -> Option<u32> {
+    let field = exif.get_field(tag, In::PRIMARY)?;
+    field.value.get_uint(0)
+}
+
+fn exif_rational_f64(exif: &Exif, tag: Tag) -> Option<f64> {
+    let field = exif.get_field(tag, In::PRIMARY)?;
+    match &field.value {
+        exif::Value::Rational(values) => values.first().map(|r| r.to_f64()),
+        exif::Value::SRational(values) => {
+            values.first().map(|r| f64::from(r.num) / f64::from(r.denom))
+        }
+        _ => None,
+    }
+}
+
+/// Format an exposure-time rational as the frontend-friendly raw string: a true
+/// fraction (`num != 1` and `denom != 1`) is kept as `num/denom`; otherwise the
+/// computed seconds value is rendered (so `1/1` → `"1"`, `2/1` → `"2"`).
+fn exif_rational_string(exif: &Exif, tag: Tag) -> Option<String> {
+    let field = exif.get_field(tag, In::PRIMARY)?;
+    match &field.value {
+        exif::Value::Rational(values) => values.first().map(|r| rational_label(r.num, r.denom)),
+        _ => None,
+    }
+}
+
+fn rational_label(num: u32, denom: u32) -> String {
+    if denom == 0 {
+        return "0".to_owned();
+    }
+    if denom == 1 {
+        return num.to_string();
+    }
+    if num == 1 {
+        return format!("1/{denom}");
+    }
+    // Non-unit numerator (e.g. 10/300): keep it raw; the frontend decides display.
+    format!("{num}/{denom}")
+}
+
 /// Bake an EXIF orientation (1–8) into the pixels of `image`, returning a
 /// correctly-oriented image. Used where the consumer cannot apply orientation as
 /// a display transform — notably the filmstrip thumbnail, which renders the
@@ -1476,6 +1895,26 @@ pub mod __test_support {
 
     pub fn read_orientation_for(path: &Path) -> u16 {
         read_orientation(path)
+    }
+
+    pub fn format_label_for(path: &Path) -> String {
+        format_label(path)
+    }
+
+    pub fn color_type_label_for(color: image::ColorType) -> String {
+        color_type_label(color)
+    }
+
+    pub fn bits_per_channel_for(color: image::ColorType) -> u32 {
+        bits_per_channel(color)
+    }
+
+    pub fn rational_label_for(num: u32, denom: u32) -> String {
+        rational_label(num, denom)
+    }
+
+    pub fn read_header_color_for(path: &Path) -> (Option<String>, Option<u32>) {
+        read_header_color(path)
     }
 
     pub fn decode_with_image_crate_for(path: &Path) -> Result<DynamicImage, DecodeImageError> {

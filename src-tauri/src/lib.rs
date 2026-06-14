@@ -113,6 +113,7 @@ pub fn run() {
             commands::associations_runtime::set_default_associations,
             commands::scan_folder,
             commands::probe_image,
+            commands::read_image_metadata,
             commands::decode_image,
             commands::peek_decoded_image,
             commands::sample_image,

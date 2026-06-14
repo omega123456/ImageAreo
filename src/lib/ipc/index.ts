@@ -8,9 +8,11 @@ import {
   type DecodedImage,
   type GenerateThumbnailRequest,
   type ImageEntry,
+  type ImageMetadata,
   type OkResponse,
   type ProbedImage,
   type ProbeImageRequest,
+  type ReadImageMetadataRequest,
   type RevealInFileManagerRequest,
   type SampleImageRequest,
   type ScanFolderRequest,
@@ -137,6 +139,20 @@ export function revealInFileManager(
 ): Promise<OkResponse> {
   return invokeCommand<OkResponse>(
     IPC_COMMANDS.revealInFileManager,
+    request as unknown as InvokeArgs,
+  );
+}
+
+/**
+ * Read full on-demand metadata (file size, dimensions, color type/bit depth,
+ * orientation, camera EXIF) for one image without decoding pixels. Rejects with
+ * the existing `DecodeImageError`-shaped error on an invalid path.
+ */
+export function readImageMetadata(
+  request: ReadImageMetadataRequest,
+): Promise<ImageMetadata> {
+  return invokeCommand<ImageMetadata>(
+    IPC_COMMANDS.readImageMetadata,
     request as unknown as InvokeArgs,
   );
 }
