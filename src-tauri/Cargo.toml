@@ -73,6 +73,19 @@ jpeg-decoder = "0.3.2"
 # 0.3.47 is the lowest the tree allows (plist requires >= 0.3.47). Remove once a
 # fixed time release lands. Transitive-only dep, pinned here to hold the lockfile.
 time = "=0.3.47"
+# Pinned: alloc-no-stdlib 3.0.0 was published, and cargo greedily picks it for
+# alloc-stdlib 0.2.3 and brotli-decompressor 5.0.2 (whose ranges allow <4). But
+# brotli 8.0.3 (pulled transitively by tauri) requires alloc-no-stdlib ^2.0, so
+# the tree ends up with both 2.x and 3.x. A direct pin on alloc-no-stdlib can't
+# fix this — the two majors just coexist — so brotli's `BrotliAlloc` impls fail to
+# resolve (E0277 on `StandardAlloc: Allocator<…>`), built against a different
+# alloc-no-stdlib than alloc-stdlib's `StandardAlloc`. Instead pin the two crates
+# that pull 3.0.0 down to releases whose alloc-no-stdlib req is ^2.0, so nothing
+# in the tree admits 3.x and everything unifies on 2.0.4. Transitive-only deps,
+# pinned in Cargo.toml so they survive lockfile regeneration. Remove once brotli
+# ships a release with consistent alloc-no-stdlib versions across the tree.
+alloc-stdlib = "=0.2.2"
+brotli-decompressor = "=5.0.1"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61.3", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell"] }
