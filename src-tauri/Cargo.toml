@@ -1,6 +1,6 @@
 [package]
 name = "imageareo"
-version = "1.2.2"
+version = "1.3.0"
 description = "Lightweight, fast, modern cross-platform desktop image viewer."
 authors = ["ImageAreo contributors"]
 edition = "2021"
