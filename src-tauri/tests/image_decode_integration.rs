@@ -308,18 +308,63 @@ async fn decode_image_command_returns_a_cache_file_path() {
 }
 
 #[tokio::test]
-async fn decode_image_command_rejects_native_formats() {
+async fn decode_image_command_decodes_native_formats_for_display() {
+    // Native formats normally render directly in the WebView, but the frontend
+    // routes large native images through the backend Display path. That path must
+    // decode them rather than reject them.
+    let dir = TempImageDir::new();
+    let path = dir.path().join("native.png");
+    write_dynamic_image(&path, &fixture_image(8, 6), ImageFormat::Png);
+
+    let scheduler = Scheduler::new();
+    let decoded = commands::decode_image_via(&scheduler, path_string(&path), None, None, None, None)
+        .await
+        .expect("native display decode should succeed");
+
+    assert_eq!((decoded.width, decoded.height), (8, 6));
+}
+
+#[tokio::test]
+async fn decode_image_command_rejects_native_formats_for_preview() {
+    // Preview/Enhance are RAW-only; native formats are still rejected there so the
+    // routing stays scoped to the Display path.
     let dir = TempImageDir::new();
     let path = dir.path().join("native.png");
     write_dynamic_image(&path, &fixture_image(1, 1), ImageFormat::Png);
 
     let scheduler = Scheduler::new();
-    let error = commands::decode_image_via(&scheduler, path_string(&path), None, None, None, None)
-        .await
-        .expect_err("native decode should be rejected");
+    let error = commands::decode_image_via(
+        &scheduler,
+        path_string(&path),
+        Some(DecodeIntent::Preview),
+        None,
+        None,
+        None,
+    )
+    .await
+    .expect_err("native preview decode should be rejected");
 
     assert_eq!(error.code, "unsupported_format");
     assert!(error.message.contains("frontend"));
+}
+
+#[test]
+fn large_native_png_routes_through_display_and_downscales() {
+    // Regression: a native PNG over the frontend routing threshold is handed to
+    // the backend Display path. It must decode and downscale to the viewport cap
+    // rather than surfacing an "unsupported native format" error.
+    let dir = TempImageDir::new();
+    let path = dir.path().join("large.png");
+    write_dynamic_image(&path, &fixture_image(2400, 1600), ImageFormat::Png);
+
+    let hint = ViewportHint {
+        long_edge_px: 1000.0,
+    };
+    let decoded = image::decode_to_cache_viewport(&path, DecodeIntent::Display, Some(hint))
+        .expect("large native PNG should decode through the display path");
+
+    assert_eq!(decoded.width.max(decoded.height), 1024);
+    assert!(decoded.path.exists(), "cache file should be written");
 }
 
 #[tokio::test]

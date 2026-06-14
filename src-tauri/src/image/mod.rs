@@ -246,6 +246,12 @@ pub fn decode_to_cache_viewport(
 ) -> Result<DecodedCacheImage, DecodeImageError> {
     match classify_path(path) {
         Some(ImageFormatSupport::NeedsBackend) => {}
+        // Native formats normally render directly in the WebView, but the frontend
+        // routes large native images (over NATIVE_ROUTING_PIXELS) through this
+        // Display path so they are downscaled to the display tier instead of
+        // inflating to a giant bitmap in the WebView. Only the Display intent does
+        // this — Preview/Enhance are RAW-only.
+        Some(ImageFormatSupport::Native) if intent == DecodeIntent::Display => {}
         Some(ImageFormatSupport::Native) => {
             return Err(DecodeImageError::unsupported(format!(
                 "native format decode is handled by the frontend: {}",
@@ -524,6 +530,13 @@ fn decode_enhance_intent(
 /// preview at all (rare) does it fall back to a develop so the viewer can still
 /// show something. Non-RAW backend formats use their normal full decode.
 fn display_source_image(path: &Path, orientation: u16) -> Result<DynamicImage, DecodeImageError> {
+    // Large native images routed here by the frontend decode through the `image`
+    // crate; `load_backend_image_path_with_orientation` deliberately rejects
+    // native formats, so dispatch them explicitly.
+    if classify_path(path) == Some(ImageFormatSupport::Native) {
+        return Ok(decode_native_image(path)?.image);
+    }
+
     if is_raw_extension(path) {
         if let Ok(preview) = decode_preview_raw(path) {
             return Ok(preview);
