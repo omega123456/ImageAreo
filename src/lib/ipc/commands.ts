@@ -3,6 +3,7 @@ export const IPC_COMMANDS = {
   queryFileAssociations: "query_file_associations",
   setDefaultAssociations: "set_default_associations",
   scanFolder: "scan_folder",
+  folderSignature: "folder_signature",
   probeImage: "probe_image",
   decodeImage: "decode_image",
   peekDecodedImage: "peek_decoded_image",
@@ -114,6 +115,10 @@ export interface ExtAssociation {
 export interface ScanFolderRequest {
   path: string;
   sortOrder: SortOrder;
+}
+
+export interface FolderSignatureRequest {
+  path: string;
 }
 
 /**

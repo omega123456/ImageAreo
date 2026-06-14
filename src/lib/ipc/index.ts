@@ -6,6 +6,7 @@ import {
   type CopyImageToClipboardRequest,
   type DecodeImageRequest,
   type DecodedImage,
+  type FolderSignatureRequest,
   type GenerateThumbnailRequest,
   type ImageEntry,
   type ImageMetadata,
@@ -52,6 +53,21 @@ export function setDefaultAssociations(
 export function scanFolder(request: ScanFolderRequest): Promise<ImageEntry[]> {
   return invokeCommand<ImageEntry[]>(
     IPC_COMMANDS.scanFolder,
+    request as unknown as InvokeArgs,
+  );
+}
+
+/**
+ * Cheap folder change-detection probe: returns the directory's modified time
+ * (ms) via a single backend stat, without enumerating entries. The auto-scan
+ * poll calls this every tick and only issues a full {@link scanFolder} when the
+ * value changed.
+ */
+export function folderSignature(
+  request: FolderSignatureRequest,
+): Promise<number> {
+  return invokeCommand<number>(
+    IPC_COMMANDS.folderSignature,
     request as unknown as InvokeArgs,
   );
 }

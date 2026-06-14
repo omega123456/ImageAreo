@@ -107,6 +107,8 @@ export const IPC_FIXTURES: Record<string, IpcHandler> = {
       modified: 1_700_000_100_000,
     },
   ],
+  // Stable signature by default; auto-scan tests override to simulate change.
+  folder_signature: () => 1_700_000_000_000,
   // Small, non-animated, within-ceiling probe by default so native images take
   // the direct (WebView) path. Tests override for large/animated/over-ceiling.
   probe_image: () => ({

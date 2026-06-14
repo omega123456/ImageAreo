@@ -193,6 +193,67 @@ fn scan_folder_date_sort_orders_distinct_and_tied_timestamps() {
     assert_eq!(names, vec!["c.jpg", "a5.jpg", "a40.jpg"]);
 }
 
+#[test]
+fn folder_signature_returns_directory_mtime() {
+    let dir = TempImageDir::new();
+    set_file_mtime(dir.path(), FileTime::from_unix_time(1_700_000_000, 0)).expect("set dir mtime");
+
+    let signature = folder::folder_signature(dir.path()).expect("signature should succeed");
+
+    assert_eq!(signature, 1_700_000_000_000);
+}
+
+#[test]
+fn folder_signature_resolves_containing_folder_for_file_paths() {
+    let dir = TempImageDir::new();
+    let file_path = dir.touch("img1.jpg");
+    set_file_mtime(dir.path(), FileTime::from_unix_time(1_700_000_500, 0)).expect("set dir mtime");
+
+    let signature = folder::folder_signature(&file_path).expect("signature should succeed");
+
+    assert_eq!(signature, 1_700_000_500_000);
+}
+
+#[test]
+fn folder_signature_changes_when_an_entry_is_added() {
+    let dir = TempImageDir::new();
+    let before = folder::folder_signature(dir.path()).expect("signature should succeed");
+
+    // Force a later directory mtime to deterministically observe the bump
+    // (filesystem mtime resolution can otherwise collapse rapid changes).
+    dir.touch("new.jpg");
+    set_file_mtime(dir.path(), FileTime::from_unix_time(2_000_000_000, 0)).expect("set dir mtime");
+
+    let after = folder::folder_signature(dir.path()).expect("signature should succeed");
+
+    assert_ne!(before, after);
+}
+
+#[test]
+fn folder_signature_errors_when_folder_is_missing() {
+    let dir = TempImageDir::new();
+    // File inside a missing subdir: resolve_scan_root returns the (missing)
+    // parent dir, and stat on it fails.
+    let missing = dir.path().join("missing-subdir").join("image.jpg");
+
+    let error = folder::folder_signature(&missing).expect_err("missing folder should error");
+
+    assert!(error.contains("failed to stat folder"));
+}
+
+#[tokio::test]
+async fn folder_signature_command_accepts_file_paths() {
+    let dir = TempImageDir::new();
+    let selected = dir.touch("img1.jpg");
+    set_file_mtime(dir.path(), FileTime::from_unix_time(1_700_000_900, 0)).expect("set dir mtime");
+
+    let signature = commands::folder_signature(path_string(&selected))
+        .await
+        .expect("command should succeed");
+
+    assert_eq!(signature, 1_700_000_900_000);
+}
+
 fn entry_names(entries: &[folder::ImageEntry]) -> Vec<&str> {
     entries.iter().map(|entry| entry.name.as_str()).collect()
 }

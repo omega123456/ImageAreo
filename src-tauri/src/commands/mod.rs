@@ -226,6 +226,14 @@ pub async fn scan_folder(
     folder::scan_folder(std::path::Path::new(&path), sort_order.unwrap_or_default())
 }
 
+/// Cheap folder change-detection probe for the frontend auto-scan poll: returns
+/// the directory's modified time (ms) via a single stat, without enumerating
+/// entries. See [`folder::folder_signature`].
+#[tauri::command(rename_all = "camelCase")]
+pub async fn folder_signature(path: String) -> Result<u64, String> {
+    folder::folder_signature(std::path::Path::new(&path))
+}
+
 /// The scheduler permit class a decode intent runs in: an `Enhance` decode is a
 /// heavy full-sensor develop (serialized), while preview/display are the lighter
 /// viewport tier.

@@ -37,6 +37,23 @@ pub fn resolve_scan_root(path: &Path) -> Result<PathBuf, String> {
         .ok_or_else(|| format!("path has no containing folder: {}", path.display()))
 }
 
+/// Cheap change-detection signature for a folder: a single `metadata()` stat on
+/// the resolved scan root, returning its modified time in milliseconds. Used by
+/// the frontend auto-scan poll to decide whether a full [`scan_folder`] is
+/// warranted — on macOS/Windows the directory mtime bumps on add/remove/rename,
+/// so this catches new/removed files without re-statting every entry each tick.
+pub fn folder_signature(path: &Path) -> Result<u64, String> {
+    let folder_path = resolve_scan_root(path)?;
+    let metadata = fs::metadata(&folder_path)
+        .map_err(|error| format!("failed to stat folder {}: {error}", folder_path.display()))?;
+    Ok(metadata
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0))
+}
+
 pub fn scan_folder(path: &Path, sort_order: SortOrder) -> Result<Vec<ImageEntry>, String> {
     let folder_path = resolve_scan_root(path)?;
     let mut entries = fs::read_dir(&folder_path)
