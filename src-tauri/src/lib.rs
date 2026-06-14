@@ -50,9 +50,9 @@ fn prevent_default() -> tauri::plugin::TauriPlugin<tauri::Wry> {
 pub fn run() {
     // NOTE: the single-instance plugin is intentionally NOT registered so that
     // multiple ImageAreo instances can run with independent folder contexts.
-    // On Windows a second launch spawns a new process naturally; on macOS the
-    // OS reuses the running app, so concurrent instances are launched via
-    // `open -n /Applications/ImageAreo.app`.
+    // On Windows a second launch spawns a new process naturally. On macOS the
+    // bundled Info.plist explicitly allows LaunchServices to create another
+    // instance for document opens instead of redirecting into the running app.
 
     // Buffer the initial launch path (argv) until the frontend signals ready.
     // The macOS "Opened" event is wired below and feeds the same buffer.

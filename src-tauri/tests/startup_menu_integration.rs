@@ -91,3 +91,13 @@ fn event_names_are_stable_contract_constants() {
     assert_eq!(OPEN_PATH_EVENT, "imageareo://open-path");
     assert_eq!(MENU_EVENT, "imageareo://menu");
 }
+
+#[test]
+fn macos_plist_allows_document_opens_to_spawn_new_instances() {
+    let plist_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("Info.plist");
+    let plist = std::fs::read_to_string(&plist_path)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", plist_path.display()));
+
+    assert!(plist.contains("<key>LSMultipleInstancesProhibited</key>"));
+    assert!(plist.contains("<false/>"));
+}
