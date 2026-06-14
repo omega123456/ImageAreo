@@ -156,6 +156,43 @@ describe("ZoomPanController", () => {
     c.destroy();
   });
 
+  it("applyInitialFit fits an image larger than the container", () => {
+    // 800x600 in a 400x300 container: fitZoom 0.5 < 1, so it must fit, not 1:1.
+    const viewer = makeViewer({ zoom: 4, fitMode: "free" });
+    const c = new ZoomPanController(container, viewer);
+    c.applyInitialFit();
+    expect(viewer.zoom).toBeCloseTo(0.5);
+    expect(viewer.pan).toEqual({ x: 0, y: 0 });
+    expect(viewer.fitMode).toBe("fit");
+    c.destroy();
+  });
+
+  it("applyInitialFit shows a small image at real (100%) size", () => {
+    // 200x150 fits inside the 400x300 container (fitZoom 2 >= 1), so show 1:1
+    // rather than upscaling it to fill the window.
+    const viewer = makeViewer({
+      naturalWidth: 200,
+      naturalHeight: 150,
+      zoom: 0.5,
+      fitMode: "fit",
+    });
+    const c = new ZoomPanController(container, viewer);
+    c.applyInitialFit();
+    expect(viewer.zoom).toBe(1);
+    expect(viewer.pan).toEqual({ x: 0, y: 0 });
+    expect(viewer.fitMode).toBe("actual");
+    c.destroy();
+  });
+
+  it("applyInitialFit ignores a non-ready viewer", () => {
+    const viewer = makeViewer({ status: "loading", zoom: 3, fitMode: "free" });
+    const c = new ZoomPanController(container, viewer);
+    c.applyInitialFit();
+    expect(viewer.zoom).toBe(3);
+    expect(viewer.fitMode).toBe("free");
+    c.destroy();
+  });
+
   it("ignores actions when status is not ready", () => {
     const viewer = makeViewer({ status: "loading", zoom: 1 });
     const c = new ZoomPanController(container, viewer);

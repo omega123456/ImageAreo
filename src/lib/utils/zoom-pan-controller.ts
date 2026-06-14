@@ -358,6 +358,22 @@ export class ZoomPanController {
     this.viewer.fitMode = "fit";
   }
 
+  /**
+   * Initial sizing applied when an image opens: show it at its real (100%) size
+   * when it already fits inside the container, otherwise fit it to screen.
+   * `fitZoom() >= 1` means the natural image is no larger than the available
+   * space, so showing it 1:1 never overflows — and we avoid upscaling a small
+   * image to fill the window.
+   */
+  applyInitialFit(): void {
+    if (this.viewer.status !== "ready") return;
+    if (this.fitZoom() >= 1) {
+      this.setActualSize();
+    } else {
+      this.fitToScreen();
+    }
+  }
+
   /** 100% zoom, centered. */
   setActualSize(): void {
     if (this.viewer.status !== "ready") return;

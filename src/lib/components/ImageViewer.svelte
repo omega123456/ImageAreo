@@ -324,7 +324,7 @@
     // Defer the fit to the next frame so layout has settled — a cached/
     // synchronous decode can fire `load` before the container has a real size.
     requestAnimationFrame(() => {
-      controller?.fitToScreen();
+      controller?.applyInitialFit();
       // Even when fit resolves to the current zoom (for example 1:1 images),
       // force one more chrome sample from the final painted state.
       bumpChromeSampleVersion();
