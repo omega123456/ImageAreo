@@ -150,6 +150,35 @@ describe("Toolbar", () => {
     );
   });
 
+  it("disables image-specific actions when no image is loaded", () => {
+    render(Toolbar, { props: { hasImage: false } });
+
+    for (const label of [
+      "Fit to screen",
+      "Actual size",
+      "Zoom in",
+      "Zoom out",
+      "Rotate left",
+      "Rotate right",
+      "Toggle filmstrip",
+      "Image info",
+    ]) {
+      expect(screen.getByRole("button", { name: label })).toBeDisabled();
+    }
+
+    for (const label of ["Open image", "Open folder", "Toggle fullscreen", "Settings"]) {
+      expect(screen.getByRole("button", { name: label })).not.toBeDisabled();
+    }
+  });
+
+  it("enables all actions when an image is loaded", () => {
+    render(Toolbar, { props: { hasImage: true } });
+
+    for (const label of ["Fit to screen", "Zoom in", "Rotate left", "Image info"]) {
+      expect(screen.getByRole("button", { name: label })).not.toBeDisabled();
+    }
+  });
+
   it("hides the counter when no folder is loaded", () => {
     render(Toolbar);
     expect(screen.queryByLabelText("Image position")).toBeNull();

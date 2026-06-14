@@ -251,11 +251,18 @@ describe("App", () => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
-  it("hides the toolbar when no image is loaded", () => {
+  it("shows the toolbar with image actions disabled when no image is loaded", () => {
     viewer.reset();
     render(App);
 
-    expect(screen.queryByTestId("toolbar-overlay")).toBeNull();
+    expect(screen.getByTestId("toolbar-overlay")).toBeInTheDocument();
+    // File/settings actions stay enabled; image-specific ones are disabled.
+    expect(screen.getByRole("button", { name: "Open image" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "Settings" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "Fit to screen" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Zoom in" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Rotate left" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Image info" })).toBeDisabled();
   });
 
   it("shows the Enhance control only for a RAW image once the display is ready", async () => {

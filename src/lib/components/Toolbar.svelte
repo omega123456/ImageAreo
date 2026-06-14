@@ -20,6 +20,8 @@
     galleryVisible?: boolean;
     fullscreen?: boolean;
     infoOpen?: boolean;
+    /** When false, image-specific actions (zoom/fit/rotate/info/filmstrip) are disabled. */
+    hasImage?: boolean;
   }
 
   let {
@@ -38,6 +40,7 @@
     galleryVisible = true,
     fullscreen = false,
     infoOpen = false,
+    hasImage = true,
   }: Props = $props();
 
   const OpenFileIcon = icons.openFile;
@@ -69,9 +72,10 @@
       : "text-chrome-glyph-on-light",
   );
   const buttonClass = $derived(
-    chromeTone.toolbarDark
+    (chromeTone.toolbarDark
       ? "btn-icon hover:bg-chrome-hover-on-dark"
-      : "btn-icon hover:bg-chrome-hover-on-light",
+      : "btn-icon hover:bg-chrome-hover-on-light") +
+      " disabled:opacity-40 disabled:pointer-events-none",
   );
 
   // Selected-toggle chip fill, adapted to the same sampled tone.
@@ -112,6 +116,7 @@
     class={buttonClass}
     aria-label="Fit to screen"
     title="Fit to screen (F)"
+    disabled={!hasImage}
     onclick={onFit}
   >
     <FitIcon size={TOOLBAR_ICON_SIZE} aria-hidden="true" class={glyphClass} />
@@ -122,6 +127,7 @@
     class={buttonClass}
     aria-label="Actual size"
     title="Actual size (1)"
+    disabled={!hasImage}
     onclick={onActualSize}
   >
     <ActualSizeIcon size={TOOLBAR_ICON_SIZE} aria-hidden="true" class={glyphClass} />
@@ -132,6 +138,7 @@
     class={buttonClass}
     aria-label="Zoom in"
     title="Zoom in (+)"
+    disabled={!hasImage}
     onclick={onZoomIn}
   >
     <ZoomInIcon size={TOOLBAR_ICON_SIZE} aria-hidden="true" class={glyphClass} />
@@ -142,6 +149,7 @@
     class={buttonClass}
     aria-label="Zoom out"
     title="Zoom out (−)"
+    disabled={!hasImage}
     onclick={onZoomOut}
   >
     <ZoomOutIcon size={TOOLBAR_ICON_SIZE} aria-hidden="true" class={glyphClass} />
@@ -166,6 +174,7 @@
     class={buttonClass}
     aria-label="Rotate left"
     title="Rotate left (Ctrl+[)"
+    disabled={!hasImage}
     onclick={onRotateLeft}
   >
     <RotateLeftIcon size={TOOLBAR_ICON_SIZE} aria-hidden="true" class={glyphClass} />
@@ -176,6 +185,7 @@
     class={buttonClass}
     aria-label="Rotate right"
     title="Rotate right (Ctrl+])"
+    disabled={!hasImage}
     onclick={onRotateRight}
   >
     <RotateRightIcon size={TOOLBAR_ICON_SIZE} aria-hidden="true" class={glyphClass} />
@@ -190,6 +200,7 @@
     aria-label="Toggle filmstrip"
     aria-pressed={galleryVisible}
     title="Toggle filmstrip"
+    disabled={!hasImage}
     onclick={onToggleGallery}
   >
     <FilmstripIcon
@@ -206,6 +217,7 @@
     aria-label="Image info"
     aria-pressed={infoOpen}
     title="Image info (I)"
+    disabled={!hasImage}
     onclick={onToggleInfo}
   >
     <InfoIcon

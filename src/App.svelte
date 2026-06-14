@@ -74,6 +74,8 @@
     return () => observer.disconnect();
   });
 
+  const hasImage = $derived(viewer.status !== "idle");
+
   const chromeVisibilityClass = $derived(
     chrome.chromeVisible
       ? "visible opacity-100"
@@ -91,7 +93,9 @@
    * it again via {@link chrome.chromeVisible}.
    */
   const toolbarChromeClass = $derived(
-    !ui.fullscreen
+    !hasImage
+      ? "visible opacity-100 transition-none"
+      : !ui.fullscreen
       ? `${chromeVisibilityClass} ${chromeTransitionClass}`
       : chrome.chromeVisible
         ? `translate-y-0 ${chrome.instant ? "transition-none" : "transition-transform duration-300 ease-out"}`
@@ -278,39 +282,37 @@
       infoBounds={infoBounds}
     />
 
-    {#if viewer.status !== "idle"}
+    <div
+      class={`pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center px-3 ${toolbarChromeClass}`}
+      data-testid="toolbar-overlay"
+    >
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
-        class={`pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center px-3 ${toolbarChromeClass}`}
-        data-testid="toolbar-overlay"
+        bind:this={toolbarHost}
+        class="pointer-events-auto"
+        onpointerenter={() => chrome.holdVisible()}
+        onpointerleave={() => chrome.releaseVisible()}
       >
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div
-          bind:this={toolbarHost}
-          class="pointer-events-auto"
-          onpointerenter={() => chrome.holdVisible()}
-          onpointerleave={() => chrome.releaseVisible()}
-        >
-          <Toolbar
-            onOpen={handleOpen}
-            onOpenFolder={handleOpenFolder}
-            onFit={() => controller?.fitToScreen()}
-            onActualSize={() => controller?.setActualSize()}
-            onZoomIn={() => controller?.zoomIn()}
-            onZoomOut={() => controller?.zoomOut()}
-            onToggleFullscreen={() => void ui.toggleFullscreen()}
-            onRotateLeft={() => viewer.rotateLeft()}
-            onRotateRight={() => viewer.rotateRight()}
-            onSettings={() => ui.openSettings()}
-            onToggleGallery={() => galleryUi.toggle()}
-            galleryVisible={galleryUi.visible}
-            fullscreen={ui.fullscreen}
-            infoOpen={ui.infoOpen}
-            onToggleInfo={() => ui.toggleInfo()}
-          />
-        </div>
+        <Toolbar
+          onOpen={handleOpen}
+          onOpenFolder={handleOpenFolder}
+          onFit={() => controller?.fitToScreen()}
+          onActualSize={() => controller?.setActualSize()}
+          onZoomIn={() => controller?.zoomIn()}
+          onZoomOut={() => controller?.zoomOut()}
+          onToggleFullscreen={() => void ui.toggleFullscreen()}
+          onRotateLeft={() => viewer.rotateLeft()}
+          onRotateRight={() => viewer.rotateRight()}
+          onSettings={() => ui.openSettings()}
+          onToggleGallery={() => galleryUi.toggle()}
+          galleryVisible={galleryUi.visible}
+          fullscreen={ui.fullscreen}
+          infoOpen={ui.infoOpen}
+          onToggleInfo={() => ui.toggleInfo()}
+          hasImage={hasImage}
+        />
       </div>
-    {/if}
-
+    </div>
     <div
       class={`pointer-events-none absolute inset-0 z-20 ${chromeVisibilityClass} ${chromeTransitionClass}`}
       data-testid="zoom-hud-overlay"
