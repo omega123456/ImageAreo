@@ -1246,6 +1246,76 @@ fn bayer_pixels_from_image(image: &DynamicImage) -> Vec<u16> {
     pixels
 }
 
+#[test]
+fn mislabeled_png_as_heic_decodes_via_content_sniff() {
+    // A plain PNG saved with a `.heic` name: the extension routes it to the HEIC
+    // decoder (which fails on PNG bytes), but the content-sniff fallback must
+    // recover and decode it as PNG — mirroring OS image viewers.
+    let dir = TempImageDir::new();
+    let path = dir.path().join("mislabeled.heic");
+    write_dynamic_image(&path, &fixture_image(48, 36), ImageFormat::Png);
+
+    let loaded = image::load_supported_image_path(&path)
+        .expect("a PNG misnamed as .heic should decode via content sniffing");
+    assert_eq!(loaded.image.dimensions(), (48, 36));
+}
+
+#[test]
+fn mislabeled_jpeg_as_avif_decodes_via_content_sniff() {
+    // `.avif` routes to the HEIC/AVIF decoder; JPEG bytes there fail, so the
+    // content-sniff fallback decodes them as JPEG instead.
+    let dir = TempImageDir::new();
+    let path = dir.path().join("mislabeled.avif");
+    write_dynamic_image(&path, &fixture_image(40, 40), ImageFormat::Jpeg);
+
+    let loaded = image::load_supported_image_path(&path)
+        .expect("a JPEG misnamed as .avif should decode via content sniffing");
+    assert_eq!(loaded.image.dimensions(), (40, 40));
+}
+
+#[test]
+fn mislabeled_heic_as_tiff_decodes_via_content_sniff() {
+    // Real HEIC bytes saved with a `.tif` name: the image-crate TIFF decoder
+    // fails, and the fallback detects the ISO-BMFF `ftyp` brand and routes to the
+    // HEIC decoder.
+    let dir = TempImageDir::new();
+    let path = dir.path().join("mislabeled.tif");
+    std::fs::copy(fixture_path("sample.heic"), &path).expect("copy heic fixture");
+
+    let loaded = image::load_supported_image_path(&path)
+        .expect("HEIC bytes misnamed as .tif should decode via content sniffing");
+    assert!(loaded.image.width() > 0 && loaded.image.height() > 0);
+}
+
+#[test]
+fn mislabeled_png_as_heic_decodes_to_cache() {
+    // End-to-end through the user-facing decode path: the misnamed file must
+    // produce a display-cache derivative rather than a "corrupted format" error.
+    let _cache = common::CacheGuard::new();
+    let dir = TempImageDir::new();
+    let path = dir.path().join("mislabeled.heic");
+    write_dynamic_image(&path, &fixture_image(64, 48), ImageFormat::Png);
+
+    let decoded = image::decode_to_cache(&path, DecodeIntent::Display)
+        .expect("a PNG misnamed as .heic should decode to cache");
+    assert_eq!((decoded.width, decoded.height), (64, 48));
+    assert!(decoded.path.exists());
+}
+
+#[test]
+fn genuinely_corrupt_backend_file_surfaces_error() {
+    // Random bytes with no recognizable signature must still error (the content
+    // sniff finds nothing to recover with), not silently succeed.
+    let dir = TempImageDir::new();
+    let path = dir.path().join("corrupt.heic");
+    dir.write("corrupt.heic", &[0u8, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+
+    assert!(
+        image::load_supported_image_path(&path).is_err(),
+        "a genuinely corrupt file should still surface a decode error"
+    );
+}
+
 fn fixture_path(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests")

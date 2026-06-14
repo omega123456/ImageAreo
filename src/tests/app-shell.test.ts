@@ -39,6 +39,7 @@ vi.mock("../lib/utils/open-entry", async () => {
 });
 
 import App from "../App.svelte";
+import { ipc } from "./ipc-mock";
 import { CHROME_IDLE_MS, chrome } from "../lib/stores/chrome.svelte";
 import { folder } from "../lib/stores/folder.svelte";
 import { galleryUi } from "../lib/stores/gallery-ui.svelte";
@@ -358,6 +359,44 @@ describe("App", () => {
     });
     const titles = writeTitle.mock.calls.map((c) => c[0]);
     expect(titles.some((t) => String(t).includes("(4032×3024)"))).toBe(true);
+  });
+
+  it("shows the true source dimensions from metadata, not the displayed derivative size", async () => {
+    // A large image shown as a downsized backend derivative: naturalWidth/Height
+    // are the derivative's, but the title must report the original source size
+    // (the same number the info card shows). Real timers so the async metadata
+    // fetch resolves within waitFor.
+    vi.useRealTimers();
+    ipc.override("read_image_metadata", (args) => ({
+      fileName: "huge.heic",
+      filePath: String(args?.path),
+      format: "HEIC",
+      fileSizeBytes: 1_000_000,
+      width: 8000,
+      height: 6000,
+      pixels: 48_000_000,
+      colorType: "RGB",
+      bitDepth: 8,
+      orientation: 1,
+      camera: null,
+    }));
+    viewer.path = "/photos/huge.heic";
+    viewer.name = "huge.heic";
+    viewer.naturalWidth = 1500;
+    viewer.naturalHeight = 1125;
+
+    render(App);
+
+    await waitFor(() => {
+      const titles = writeTitle.mock.calls.map((c) => String(c[0]));
+      expect(titles.some((t) => t.includes("(8000×6000)"))).toBe(true);
+    });
+    expect(String(writeTitle.mock.calls.at(-1)?.[0])).toContain("(8000×6000)");
+
+    // Restore fake timers (+ stop chrome's real timer) so the shared afterEach,
+    // which calls vi.runOnlyPendingTimers(), runs against mocked timers.
+    chrome.stop();
+    vi.useFakeTimers();
   });
 
   it("disables chrome fade transitions when reduced motion is enabled", () => {

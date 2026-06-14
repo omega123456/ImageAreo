@@ -57,6 +57,27 @@ describe("ImageInfoStore", () => {
     expect(ipc.calls("read_image_metadata")).toHaveLength(2);
   });
 
+  it("shares a single in-flight fetch between concurrent callers", async () => {
+    // The info card and the title bar both call ensureLoaded for the current
+    // path; they must coalesce onto one IPC request, not two.
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    ipc.override("read_image_metadata", async (args) => {
+      await gate;
+      return fixtureFor(String(args?.path));
+    });
+
+    const first = imageInfo.ensureLoaded("/shared.jpg");
+    const second = imageInfo.ensureLoaded("/shared.jpg");
+    release();
+    await Promise.all([first, second]);
+
+    expect(imageInfo.current?.filePath).toBe("/shared.jpg");
+    expect(ipc.calls("read_image_metadata")).toHaveLength(1);
+  });
+
   it("resets to idle/empty for a null path", async () => {
     ipc.override("read_image_metadata", (args) =>
       fixtureFor(String(args?.path)),

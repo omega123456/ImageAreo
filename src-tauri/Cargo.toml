@@ -98,7 +98,14 @@ tauri = { version = "~2.11", features = ["test"] }
 # Compile dependencies with full optimization even in the dev profile. Image
 # decode/resize/encode (rawler, image, fast_image_resize, jxl-oxide, heic) is
 # SIMD- and loop-heavy; unoptimized it is 5-10x slower, which dominated RAW
-# `tauri:dev` decode time. Our own crate stays at the default dev opt-level so
-# incremental rebuilds remain fast.
+# `tauri:dev` decode time.
 [profile.dev.package."*"]
 opt-level = 3
+
+# Our own crate also needs a mild optimization in dev. `fast_image_resize`'s
+# `resize()` is generic, so its hot convolution loop is monomorphized *into this
+# crate* and would otherwise inherit opt-level 0 — making a single large downscale
+# take ~10s in `tauri:dev` (it is ~0.3s here, and ~0.2s in release). opt-level 1
+# keeps incremental rebuilds fast while removing that cliff.
+[profile.dev]
+opt-level = 1

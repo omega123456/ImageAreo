@@ -16,6 +16,7 @@
   import { chrome } from "./lib/stores/chrome.svelte";
   import { ui } from "./lib/stores/ui.svelte";
   import { viewer } from "./lib/stores/viewer.svelte";
+  import { imageInfo } from "./lib/stores/image-info.svelte";
   import { isRawFormat, supportedExtensions } from "./lib/utils/format";
   import {
     goNext,
@@ -156,16 +157,23 @@
     chrome.setFullscreen(ui.fullscreen);
   });
 
+  // Ensure full metadata is loaded for the current image so the title bar can
+  // report the true source dimensions (matching the info card) even while the
+  // card is closed. Cached per path; a header+EXIF read is ~0.1ms.
+  $effect(() => {
+    void imageInfo.ensureLoaded(viewer.path);
+  });
+
   /** Reflect the current image's name and path in the OS window title bar. */
   $effect(() => {
-    void writeTitle(
-      windowTitle(
-        viewer.path,
-        viewer.name,
-        viewer.naturalWidth,
-        viewer.naturalHeight,
-      ),
-    );
+    // Prefer the true source dimensions from metadata (the same numbers the info
+    // card shows, correct for RAW and downsized backend derivatives). Fall back
+    // to the displayed image's intrinsic size until metadata resolves.
+    const meta = imageInfo.current;
+    const matches = meta?.filePath === viewer.path;
+    const width = matches ? meta!.width : viewer.naturalWidth;
+    const height = matches ? meta!.height : viewer.naturalHeight;
+    void writeTitle(windowTitle(viewer.path, viewer.name, width, height));
   });
 
   const onKeydown = createKeyHandler(

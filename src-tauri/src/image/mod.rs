@@ -1,5 +1,5 @@
 use std::fs;
-use std::io::{BufReader, Cursor};
+use std::io::{BufReader, Cursor, Read};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -980,20 +980,89 @@ fn load_backend_image_path_with_orientation(
         }
     }
 
-    let image = match normalized_extension(path)?.as_str() {
-        "avif" => decode_heic(path)?,
-        "tif" | "tiff" | "bmp" | "ico" => decode_with_image_crate(path)?,
-        "heic" | "heif" => decode_heic(path)?,
-        "jxl" => decode_jxl(path)?,
+    let image = match decode_backend_by_extension(path, raw_source) {
+        Ok(image) => image,
+        Err(err) => {
+            // The extension may be lying about the file's real format (e.g. a
+            // plain PNG saved with a `.heic` name). Mirror what OS image viewers
+            // do and retry using the decoder for the actual magic bytes before
+            // surfacing the original, extension-routed error.
+            match decode_backend_by_content(path) {
+                Some(Ok(image)) => image,
+                _ => return Err(err),
+            }
+        }
+    };
+
+    Ok(LoadedImageData { image, orientation })
+}
+
+/// Decode a backend-routed image using the decoder implied by its file
+/// extension. This is the fast, common path; misnamed files fall back to
+/// [`decode_backend_by_content`].
+fn decode_backend_by_extension(
+    path: &Path,
+    raw_source: RawSource,
+) -> Result<DynamicImage, DecodeImageError> {
+    match normalized_extension(path)?.as_str() {
+        "avif" => decode_heic(path),
+        "tif" | "tiff" | "bmp" | "ico" => decode_with_image_crate(path),
+        "heic" | "heif" => decode_heic(path),
+        "jxl" => decode_jxl(path),
         "raw" | "cr2" | "cr3" | "nef" | "nrw" | "arw" | "sr2" | "srf" | "dng" | "raf" | "rw2"
-        | "orf" | "pef" | "srw" | "kdc" | "erf" | "3fr" => decode_raw(path, raw_source)?,
+        | "orf" | "pef" | "srw" | "kdc" | "erf" | "3fr" => decode_raw(path, raw_source),
         _ => unreachable!(
             "backend extension set and decode dispatch are out of sync for {}",
             path.display()
         ),
-    };
+    }
+}
 
-    Ok(LoadedImageData { image, orientation })
+/// The decoder a file's actual byte content maps to, detected independently of
+/// its extension.
+enum DetectedContent {
+    /// A still-image format the `image` crate can decode directly.
+    ImageCrate(ImageFormat),
+    /// ISO-BMFF HEIC/HEIF content (decoded via the `heic` crate).
+    Heic,
+}
+
+/// Sniff the leading bytes of `path` and decode it with the decoder for its real
+/// format, ignoring the (mismatched) extension. Returns `None` when the content
+/// is not a recognized still-image format we can re-route — RAW and JXL are
+/// intentionally excluded (no reliable header sniff here), so a genuinely
+/// corrupt file of those types still surfaces its original error.
+fn decode_backend_by_content(path: &Path) -> Option<Result<DynamicImage, DecodeImageError>> {
+    Some(match detect_backend_content(path)? {
+        DetectedContent::ImageCrate(format) => decode_with_image_crate_format(path, format),
+        DetectedContent::Heic => decode_heic(path),
+    })
+}
+
+/// Read the file header and classify the true image format from its magic bytes.
+fn detect_backend_content(path: &Path) -> Option<DetectedContent> {
+    let mut header = [0u8; 32];
+    let read = fs::File::open(path).ok()?.read(&mut header).ok()?;
+    let header = &header[..read];
+
+    // The `image` crate recognizes png/jpeg/gif/webp/bmp/tiff/ico/avif from
+    // their signatures; prefer it so we decode with the crate already in use.
+    if let Ok(format) = image::guess_format(header) {
+        return Some(DetectedContent::ImageCrate(format));
+    }
+
+    // ISO-BMFF (HEIC/HEIF): `ftyp` box at offset 4 with a HEIF-family brand.
+    if header.len() >= 12 && &header[4..8] == b"ftyp" {
+        let brand = &header[8..12];
+        if matches!(
+            brand,
+            b"heic" | b"heix" | b"heim" | b"heis" | b"hevc" | b"hevx" | b"mif1" | b"msf1"
+        ) {
+            return Some(DetectedContent::Heic);
+        }
+    }
+
+    None
 }
 
 fn normalized_extension(path: &Path) -> Result<String, DecodeImageError> {
@@ -1022,6 +1091,16 @@ fn decode_with_image_crate(path: &Path) -> Result<DynamicImage, DecodeImageError
         }
     };
 
+    decode_with_image_crate_format(path, format)
+}
+
+/// Decode `path` with the `image` crate using an explicitly supplied format,
+/// bypassing extension-based format selection. Used by the content-sniff
+/// recovery path for files whose extension does not match their bytes.
+fn decode_with_image_crate_format(
+    path: &Path,
+    format: ImageFormat,
+) -> Result<DynamicImage, DecodeImageError> {
     let mut reader = ImageReader::open(path)
         .map_err(|err| DecodeImageError::io(format!("failed to open {}: {err}", path.display())))?
         .with_guessed_format()

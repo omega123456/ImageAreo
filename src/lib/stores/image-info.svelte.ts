@@ -17,6 +17,9 @@ export type ImageInfoStatus = "idle" | "loading" | "ready" | "error";
 class ImageInfoStore {
   /** Per-path metadata cache, keyed by absolute path. */
   #cache = new Map<string, ImageMetadata>();
+  /** In-flight fetches keyed by path, so concurrent callers (info card + title
+   * bar) share a single IPC request rather than each issuing their own. */
+  #inFlight = new Map<string, Promise<ImageMetadata>>();
   /** The path of the most recent `ensureLoaded` request (stale-guard token). */
   #requestedPath: string | null = null;
 
@@ -54,7 +57,14 @@ class ImageInfoStore {
     this.status = "loading";
 
     try {
-      const metadata = await readImageMetadata({ path });
+      // Share a single in-flight request per path so the info card and the
+      // title bar don't each issue their own read for the same image.
+      let request = this.#inFlight.get(path);
+      if (!request) {
+        request = readImageMetadata({ path });
+        this.#inFlight.set(path, request);
+      }
+      const metadata = await request;
       this.#cache.set(path, metadata);
       if (this.#requestedPath !== path) return;
       this.current = metadata;
@@ -65,6 +75,8 @@ class ImageInfoStore {
       this.current = null;
       this.error = err instanceof Error ? err.message : "Could not read metadata";
       this.status = "error";
+    } finally {
+      this.#inFlight.delete(path);
     }
   }
 }
