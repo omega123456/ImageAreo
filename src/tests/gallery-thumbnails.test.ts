@@ -256,6 +256,45 @@ describe("galleryThumbnails cache", () => {
     });
   });
 
+  it("falls back to the direct asset URL when a native thumbnail decode fails", async () => {
+    ipc.override("generate_thumbnail", () => {
+      throw { code: "decode_failed", message: "unexpected end of file" };
+    });
+
+    await galleryThumbnails.request("/photos/truncated.png", 120);
+
+    expect(galleryThumbnails.get("/photos/truncated.png", 120)).toEqual({
+      status: "ready",
+      url: "asset:///photos/truncated.png",
+    });
+  });
+
+  it("does not direct-fallback backend-routed formats on decode failure", async () => {
+    ipc.override("generate_thumbnail", () => {
+      throw { code: "decode_failed", message: "failed to decode" };
+    });
+
+    await galleryThumbnails.request("/photos/bad.jxl", 120);
+
+    expect(galleryThumbnails.get("/photos/bad.jxl", 120)).toEqual({
+      status: "error",
+      url: null,
+    });
+  });
+
+  it("does not direct-fallback native thumbnails for non-decode errors", async () => {
+    ipc.override("generate_thumbnail", () => {
+      throw { code: "io_error", message: "missing file" };
+    });
+
+    await galleryThumbnails.request("/photos/missing.png", 120);
+
+    expect(galleryThumbnails.get("/photos/missing.png", 120)).toEqual({
+      status: "error",
+      url: null,
+    });
+  });
+
   it("invalidate clears an entry so it can be retried", async () => {
     let calls = 0;
     ipc.override("generate_thumbnail", () => {

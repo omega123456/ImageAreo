@@ -10,7 +10,10 @@
  * and is discarded on app exit (persistent disk cache is out of scope for v1).
  */
 
+import { convertFileSrc } from "@tauri-apps/api/core";
+
 import { generateThumbnail } from "../ipc";
+import { isNativeFormat } from "../utils/format";
 
 export type ThumbnailStatus = "pending" | "ready" | "error";
 
@@ -58,6 +61,23 @@ interface QueuedThumbnailRequest {
 
 function cacheKey(path: string, size: number): string {
   return `${size}::${path}`;
+}
+
+function isDecodeFailedError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "decode_failed"
+  );
+}
+
+function fallbackNativeThumbnailUrl(path: string, error: unknown): string | null {
+  if (!isNativeFormat(path) || !isDecodeFailedError(error)) {
+    return null;
+  }
+
+  return convertFileSrc(path);
 }
 
 class GalleryThumbnailCache {
@@ -268,8 +288,12 @@ class GalleryThumbnailCache {
         size: request.size,
       });
       result = { status: "ready", url: thumbnail.url };
-    } catch {
-      result = { status: "error", url: null };
+    } catch (error) {
+      const fallbackUrl = fallbackNativeThumbnailUrl(request.path, error);
+      result =
+        fallbackUrl !== null
+          ? { status: "ready", url: fallbackUrl }
+          : { status: "error", url: null };
     } finally {
       this.#inFlight.delete(request.key);
       this.#activeCount = Math.max(0, this.#activeCount - 1);
