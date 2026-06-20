@@ -24,7 +24,7 @@ imageareo-llvm-cov = [
   "--no-default-features",
   "--summary-only",
   "--ignore-filename-regex",
-  "src-tauri.*src.*lib\\.rs|src-tauri.*src.*main\\.rs|src-tauri.*src.*menu.*runtime\\.rs|src-tauri.*src.*commands.*clipboard_runtime\\.rs|src-tauri.*src.*commands.*reveal_runtime\\.rs|src-tauri.*tests.*common|cargo.*registry",
+  "src-tauri.*src.*lib\\.rs|src-tauri.*src.*main\\.rs|src-tauri.*src.*menu.*runtime\\.rs|src-tauri.*src.*commands.*clipboard_runtime\\.rs|src-tauri.*src.*commands.*reveal_runtime\\.rs|src-tauri.*src.*commands.*print_runtime\\.rs|src-tauri.*tests.*common|cargo.*registry",
   "--manifest-path",
   "src-tauri/Cargo.toml",
   "--fail-under-lines",

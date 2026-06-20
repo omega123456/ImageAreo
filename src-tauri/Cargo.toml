@@ -91,10 +91,19 @@ brotli-decompressor = "=5.0.1"
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61.3", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell"] }
 winreg = "0.52"
+# WebView2 print UI (`ICoreWebView2_16::ShowPrintUI`) for `print_current_view`.
+# Version-matched to the copy wry pulls in transitively.
+webview2-com = "0.38"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.10"
 core-foundation-sys = "0.8"
+# AppKit + WKWebView print panel for `print_current_view`. These are already in
+# the tree transitively via wry; pinned to compatible versions with the print
+# features enabled. `objc2` is the runtime the typed wrappers build on.
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["NSPrintInfo", "NSPrintOperation", "NSResponder", "NSWindow"] }
+objc2-web-kit = { version = "0.3", features = ["WKWebView"] }
 
 [dev-dependencies]
 # Integration-test harness (P3). `tempfile` builds isolated fixture folders;

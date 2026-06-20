@@ -39,6 +39,7 @@ import {
   MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon,
   PaletteIcon,
+  PrinterIcon,
   ProhibitIcon,
   WarningCircleIcon,
   XIcon,
@@ -84,6 +85,7 @@ export const icons = {
   copyImage: CopyIcon,
   copyPath: ClipboardIcon,
   reveal: MagnifyingGlassIcon,
+  print: PrinterIcon,
 
   // --- Chrome toggles / panels ---
   filmstrip: FilmStripIcon,

@@ -12,6 +12,7 @@ export const IPC_COMMANDS = {
   copyImageToClipboard: "copy_image_to_clipboard",
   revealInFileManager: "reveal_in_file_manager",
   readImageMetadata: "read_image_metadata",
+  printCurrentView: "print_current_view",
 } as const;
 
 /**

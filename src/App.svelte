@@ -11,6 +11,7 @@
   import EnhanceControl from "./lib/components/EnhanceControl.svelte";
   import ImageInfoCard from "./lib/components/ImageInfoCard.svelte";
   import SharpenIndicator from "./lib/components/SharpenIndicator.svelte";
+  import PrintLayout from "./lib/components/PrintLayout.svelte";
   import { updater } from "./lib/stores/updater.svelte";
   import { galleryUi } from "./lib/stores/gallery-ui.svelte";
   import { chrome } from "./lib/stores/chrome.svelte";
@@ -28,6 +29,7 @@
     registerEntryPoints,
   } from "./lib/utils/open-entry";
   import { createKeyHandler } from "./lib/utils/keybindings";
+  import { printCurrentView } from "./lib/ipc";
   import { windowTitle, writeTitle } from "./lib/utils/native-window";
   import type { ZoomPanController } from "./lib/utils/zoom-pan-controller";
 
@@ -194,6 +196,7 @@
       rotateRight: () => viewer.rotateRight(),
       toggleFullscreen: () => void ui.toggleFullscreen(),
       toggleInfo: () => ui.toggleInfo(),
+      print: () => void printCurrentView(),
       escape: handleEscape,
     },
     () => viewer.status === "ready",
@@ -274,7 +277,7 @@
   onpointermove={registerActivity}
 />
 
-<div class="flex h-screen w-screen min-h-0 flex-col overflow-hidden select-none">
+<div class="flex h-screen w-screen min-h-0 flex-col overflow-hidden select-none print:hidden">
   <main class="relative min-h-0 flex-1 overflow-hidden">
     <ImageViewer
       bind:this={imageViewer}
@@ -380,3 +383,4 @@
 
 <SettingsDrawer />
 <UpdateToast />
+<PrintLayout />

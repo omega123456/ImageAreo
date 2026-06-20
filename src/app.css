@@ -19,6 +19,35 @@
 /* Tell Tailwind where to scan for class usage. */
 @source "../src";
 
+/*
+  Print page setup. There is no Tailwind utility for the `@page` at-rule, so the
+  page-box margin is reset here — the single permitted exception to the no-CSS
+  rule (page-box configuration, not element styling). Without `margin: 0`, the
+  WebKit print engine maps `100vh` to the *full* paper height including the
+  default page margins, so the fit-to-page `PrintLayout` box (`print:h-screen`)
+  is taller than the printable area and spills a sliver onto a second, near-empty
+  page. Zeroing the page margin makes `100vh` equal the printable area, so the
+  image prints centered on exactly one page.
+*/
+@media print {
+  @page {
+    margin: 0;
+  }
+  /*
+    Give the print root a definite page-sized height and clamp it to one
+    viewport. `height: 100%` makes `body` resolve to the printable page box so
+    the PrintLayout `print:h-full` flex box can center the image exactly;
+    `overflow: hidden` suppresses the trailing near-empty page WebKit otherwise
+    emits from sub-pixel overflow.
+  */
+  html,
+  body {
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+  }
+}
+
 /* Activate the Skeleton theme on the document root. */
 @layer base {
   :root {

@@ -3,7 +3,11 @@
   import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 
   import { viewer } from "../stores/viewer.svelte";
-  import { copyImageToClipboard, revealInFileManager } from "../ipc";
+  import {
+    copyImageToClipboard,
+    printCurrentView,
+    revealInFileManager,
+  } from "../ipc";
   import { icons, ICON_SIZE, ICON_WEIGHT } from "../icons";
   import type { Component } from "svelte";
 
@@ -58,6 +62,14 @@
       run: async () => {
         if (viewer.path) await revealInFileManager({ path: viewer.path });
       },
+    },
+    {
+      id: "print",
+      label: "Print…",
+      icon: icons.print,
+      shortcut: "Ctrl+P",
+      dividerBefore: true,
+      run: () => printCurrentView(),
     },
   ];
 

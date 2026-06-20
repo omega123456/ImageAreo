@@ -133,6 +133,7 @@ export const IPC_FIXTURES: Record<string, IpcHandler> = {
   }),
   copy_image_to_clipboard: () => ({ ok: true }),
   reveal_in_file_manager: () => ({ ok: true }),
+  print_current_view: () => ({ ok: true }),
   query_file_associations: () => [
     { ext: "jpg", isDefault: true },
     { ext: "png", isDefault: false },

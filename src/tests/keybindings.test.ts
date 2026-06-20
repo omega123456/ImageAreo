@@ -33,6 +33,17 @@ describe("resolveBinding", () => {
     expect(resolveBinding(key({ key: "]", metaKey: true }))).toBe("rotateRight");
   });
 
+  it("maps Ctrl+P and Cmd+P to print (both modifiers)", () => {
+    expect(resolveBinding(key({ key: "p", ctrlKey: true }))).toBe("print");
+    expect(resolveBinding(key({ key: "P", ctrlKey: true }))).toBe("print");
+    expect(resolveBinding(key({ key: "p", metaKey: true }))).toBe("print");
+    expect(resolveBinding(key({ key: "P", metaKey: true }))).toBe("print");
+  });
+
+  it("does not bind plain p (no modifier)", () => {
+    expect(resolveBinding(key({ key: "p" }))).toBeNull();
+  });
+
   it("maps i / I to toggleInfo", () => {
     expect(resolveBinding(key({ key: "i" }))).toBe("toggleInfo");
     expect(resolveBinding(key({ key: "I" }))).toBe("toggleInfo");
@@ -81,6 +92,7 @@ function makeActions(): KeyActions {
     rotateRight: vi.fn(),
     toggleFullscreen: vi.fn(),
     toggleInfo: vi.fn(),
+    print: vi.fn(),
     escape: vi.fn(),
   };
 }
@@ -132,6 +144,27 @@ describe("createKeyHandler", () => {
 
     expect(actions.escape).toHaveBeenCalledOnce();
     expect(actions.toggleFullscreen).toHaveBeenCalledOnce();
+  });
+
+  it("gates print on the ready predicate (no-ops without a ready image)", () => {
+    const actions = makeActions();
+    const handler = createKeyHandler(actions, () => false);
+
+    handler(key({ key: "p", ctrlKey: true }));
+
+    expect(actions.print).not.toHaveBeenCalled();
+  });
+
+  it("fires print when an image is ready", () => {
+    const actions = makeActions();
+    const handler = createKeyHandler(actions, () => true);
+
+    const e = key({ key: "p", metaKey: true });
+    const prevent = vi.spyOn(e, "preventDefault");
+    handler(e);
+
+    expect(actions.print).toHaveBeenCalledOnce();
+    expect(prevent).toHaveBeenCalledOnce();
   });
 
   it("always fires toggleInfo even when no image is ready", () => {

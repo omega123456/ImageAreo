@@ -160,6 +160,15 @@ export function revealInFileManager(
 }
 
 /**
+ * Trigger the OS-native print dialog for the current view. The command acts on
+ * the main webview (which renders the print-only layer under `@media print`),
+ * so it carries no payload. Resolves once the dialog has been presented.
+ */
+export function printCurrentView(): Promise<void> {
+  return invokeCommand<void>(IPC_COMMANDS.printCurrentView, {});
+}
+
+/**
  * Read full on-demand metadata (file size, dimensions, color type/bit depth,
  * orientation, camera EXIF) for one image without decoding pixels. Rejects with
  * the existing `DecodeImageError`-shaped error on an invalid path.

@@ -33,7 +33,7 @@ describe("ContextMenu", () => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
-  it("opens at the cursor on right-click and lists all five items", async () => {
+  it("opens at the cursor on right-click and lists all six items", async () => {
     const canvas = renderWithImage();
     const menu = await openMenu(canvas);
 
@@ -47,9 +47,10 @@ describe("ContextMenu", () => {
     expect(
       screen.getByRole("menuitem", { name: /Reveal in Finder\/Explorer/ }),
     ).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /Print/ })).toBeInTheDocument();
 
-    // Exactly one divider between the two groups.
-    expect(screen.getAllByRole("separator")).toHaveLength(1);
+    // Two dividers: before the copy group and before Print.
+    expect(screen.getAllByRole("separator")).toHaveLength(2);
   });
 
   it("does NOT open when no image is loaded", async () => {
@@ -159,6 +160,19 @@ describe("ContextMenu", () => {
     });
   });
 
+  it("calls print_current_view when the Print item is clicked", async () => {
+    const canvas = renderWithImage("/photos/poster.jpg");
+    await openMenu(canvas);
+    await fireEvent.click(screen.getByRole("menuitem", { name: /Print/ }));
+    await waitFor(() =>
+      expect(ipc.calls("print_current_view")).toHaveLength(1),
+    );
+    // The command acts on the main webview and carries no payload.
+    expect(ipc.calls("print_current_view")[0]).toEqual({});
+    // Menu closes after a selection.
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
   it("navigates items with ArrowDown/ArrowUp and selects with Enter", async () => {
     const canvas = renderWithImage();
     const menu = await openMenu(canvas);
@@ -177,13 +191,13 @@ describe("ContextMenu", () => {
     // ArrowUp from the first item wraps to the last.
     await fireEvent.keyDown(menu, { key: "ArrowUp" });
     expect(document.activeElement).toBe(
-      screen.getByRole("menuitem", { name: /Reveal in Finder\/Explorer/ }),
+      screen.getByRole("menuitem", { name: /Print/ }),
     );
 
-    // Enter selects the focused (Reveal) item.
+    // Enter selects the focused (Print) item.
     await fireEvent.keyDown(menu, { key: "Enter" });
     await waitFor(() =>
-      expect(ipc.calls("reveal_in_file_manager")).toHaveLength(1),
+      expect(ipc.calls("print_current_view")).toHaveLength(1),
     );
   });
 
@@ -193,7 +207,7 @@ describe("ContextMenu", () => {
 
     await fireEvent.keyDown(menu, { key: "End" });
     expect(document.activeElement).toBe(
-      screen.getByRole("menuitem", { name: /Reveal in Finder\/Explorer/ }),
+      screen.getByRole("menuitem", { name: /Print/ }),
     );
 
     await fireEvent.keyDown(menu, { key: "Home" });

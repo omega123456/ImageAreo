@@ -146,7 +146,8 @@ pub fn run() {
             commands::sample_image,
             commands::generate_thumbnail,
             commands::clipboard_runtime::copy_image_to_clipboard,
-            commands::reveal_runtime::reveal_in_file_manager
+            commands::reveal_runtime::reveal_in_file_manager,
+            commands::print_runtime::print_current_view
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

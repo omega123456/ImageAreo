@@ -31,6 +31,11 @@ export interface KeyActions {
    * an unbound `toggleInfo` simply no-ops.
    */
   toggleInfo?: () => void;
+  /**
+   * Print the current image via the OS-native print dialog (`Ctrl/Cmd+P`).
+   * Optional so the action bag can omit it; an unbound `print` simply no-ops.
+   */
+  print?: () => void;
   /** Close any open overlay / exit fullscreen (Esc). */
   escape: () => void;
 }
@@ -42,9 +47,10 @@ export type KeyBinding = keyof KeyActions | null;
  * Resolve a keyboard event to its bound action name, or `null` if unbound.
  *
  * Pure and side-effect-free so the full key table can be asserted directly.
- * `Ctrl+[` / `Ctrl+]` rotate (also accepts Meta on macOS); `Ctrl+Cmd+F`
- * toggles fullscreen (the mac chord — requires BOTH ctrl and meta so plain
- * Cmd+F / Ctrl+F Find are not hijacked); `Esc` and `F11` are always honoured
+ * `Ctrl+[` / `Ctrl+]` rotate (also accepts Meta on macOS); `Ctrl/Cmd+P`
+ * prints; `Ctrl+Cmd+F` toggles fullscreen (the mac chord — requires BOTH ctrl
+ * and meta so plain Cmd+F / Ctrl+F Find are not hijacked); `Esc` and `F11` are
+ * always honoured
  * (overlay/fullscreen handling decides whether anything happens), while the
  * rest are image-view actions.
  */
@@ -57,6 +63,9 @@ export function resolveBinding(e: KeyboardEvent): KeyBinding {
     }
     if (e.key === "[") return "rotateLeft";
     if (e.key === "]") return "rotateRight";
+    // `mod` is `ctrlKey || metaKey`, so this covers Ctrl+P (Windows) and Cmd+P
+    // (macOS) with a single branch.
+    if (e.key === "p" || e.key === "P") return "print";
     return null;
   }
 

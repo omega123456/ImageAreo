@@ -5,6 +5,7 @@ import {
   copyImageToClipboard,
   decodeImage,
   generateThumbnail,
+  printCurrentView,
   readImageMetadata,
   revealInFileManager,
   scanFolder,
@@ -18,6 +19,7 @@ describe("IPC wrappers", () => {
     const thumbnail = await generateThumbnail({ path: "/photos/img1.jpg", size: 128 });
     await copyImageToClipboard({ path: "/photos/img1.jpg" });
     await revealInFileManager({ path: "/photos/img1.jpg" });
+    await printCurrentView();
 
     expect(ipc.calls("scan_folder")).toEqual([
       { path: "/photos/img1.jpg", sortOrder: "date" },
@@ -35,6 +37,7 @@ describe("IPC wrappers", () => {
     expect(ipc.calls("reveal_in_file_manager")).toEqual([
       { path: "/photos/img1.jpg" },
     ]);
+    expect(ipc.calls("print_current_view")).toEqual([{}]);
     expect(thumbnail).toEqual({ url: "asset:///tmp/imageareo-thumb.jpg" });
     expect(decoded).toEqual({
       path: "/tmp/imageareo-images/decoded.jpg",
