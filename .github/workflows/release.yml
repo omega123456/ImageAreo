@@ -11,6 +11,10 @@ jobs:
     permissions:
       contents: write
     runs-on: macos-latest
+    env:
+      CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+      CARGO_NET_RETRY: 10
+      CARGO_HTTP_MULTIPLEXING: "false"
     steps:
       - uses: actions/checkout@v4
 
@@ -29,11 +33,17 @@ jobs:
         with:
           targets: aarch64-apple-darwin
 
+      # Restore the cache warmed on main (see ci.yml). Tag-scoped caches are not
+      # reused across releases, so releases only restore and do not save.
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
           workspaces: ./src-tauri -> target
           cache-on-failure: true
+          prefix-key: v0-rust-imageareo-macos-arm
+          add-job-id-key: false
+          cache-all-crates: true
+          save-if: false
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
@@ -93,6 +103,10 @@ jobs:
     permissions:
       contents: write
     runs-on: windows-latest
+    env:
+      CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+      CARGO_NET_RETRY: 10
+      CARGO_HTTP_MULTIPLEXING: "false"
     steps:
       - uses: actions/checkout@v4
 
@@ -109,11 +123,17 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
+      # Restore the cache warmed on main (see ci.yml). Tag-scoped caches are not
+      # reused across releases, so releases only restore and do not save.
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
           workspaces: ./src-tauri -> target
           cache-on-failure: true
+          prefix-key: v0-rust-imageareo-windows
+          add-job-id-key: false
+          cache-all-crates: true
+          save-if: false
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
