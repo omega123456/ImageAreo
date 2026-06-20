@@ -1,1 +1,1 @@
-See release assets for platform installers.
+Added printing option
