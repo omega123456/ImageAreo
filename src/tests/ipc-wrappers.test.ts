@@ -37,7 +37,10 @@ describe("IPC wrappers", () => {
     expect(ipc.calls("reveal_in_file_manager")).toEqual([
       { path: "/photos/img1.jpg" },
     ]);
-    expect(ipc.calls("print_current_view")).toEqual([{}]);
+    // No-arg quick-print forwards the default (US Letter portrait) request.
+    expect(ipc.calls("print_current_view")).toEqual([
+      { paperWidthMm: 215.9, paperHeightMm: 279.4, orientation: "portrait" },
+    ]);
     expect(thumbnail).toEqual({ url: "asset:///tmp/imageareo-thumb.jpg" });
     expect(decoded).toEqual({
       path: "/tmp/imageareo-images/decoded.jpg",

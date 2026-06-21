@@ -1,18 +1,24 @@
-use super::print::PrintCommandError;
+use super::print::{mm_to_points, PrintCommandError, PrintOrientation};
 
 /// Trigger the OS-native print dialog for the main webview.
 ///
-/// The webview renders the print-only DOM layer under `@media print` (see
-/// `PrintLayout.svelte`), so the panel prints just the image fit to the page.
-/// The actual print panel is an OS side effect that cannot be asserted
-/// headlessly, so this whole module is on the coverage-exclusion list (same
-/// policy as the clipboard/reveal/fullscreen OS steps). The pure error mapping
-/// lives in `print.rs` and stays covered.
+/// The webview renders the store-driven print-only DOM under `@media print`
+/// (see `PrintPageLayout.svelte`), so the panel prints the tiled layout. The
+/// command is told the selected paper size (mm) + orientation so the macOS
+/// native path can seed a matching `NSPrintInfo`. The actual print panel is an
+/// OS side effect that cannot be asserted headlessly, so this whole module is on
+/// the coverage-exclusion list (same policy as the clipboard/reveal/fullscreen
+/// OS steps). The pure mm→points / orientation mapping lives in `print.rs` and
+/// stays covered.
 #[tauri::command(rename_all = "camelCase")]
 pub async fn print_current_view(
     webview_window: tauri::WebviewWindow,
+    paper_width_mm: f64,
+    paper_height_mm: f64,
+    orientation: String,
 ) -> Result<(), PrintCommandError> {
-    run_native_print(&webview_window)
+    let orientation = PrintOrientation::from_str(&orientation);
+    run_native_print(&webview_window, paper_width_mm, paper_height_mm, orientation)
 }
 
 /// macOS: drive the `WKWebView` → AppKit `printOperationWithPrintInfo:` print
@@ -22,12 +28,27 @@ pub async fn print_current_view(
 #[cfg(target_os = "macos")]
 fn run_native_print(
     webview_window: &tauri::WebviewWindow,
+    paper_width_mm: f64,
+    paper_height_mm: f64,
+    orientation: PrintOrientation,
 ) -> Result<(), PrintCommandError> {
-    use objc2_app_kit::{NSPrintInfo, NSWindow};
+    use objc2_app_kit::{
+        NSPaperOrientation, NSPrintInfo, NSPrintingPaginationMode, NSWindow,
+    };
+    use objc2_foundation::{NSCopying, NSSize};
     use objc2_web_kit::WKWebView;
 
+    let paper_size = NSSize::new(
+        mm_to_points(paper_width_mm),
+        mm_to_points(paper_height_mm),
+    );
+    let paper_orientation = match orientation {
+        PrintOrientation::Portrait => NSPaperOrientation::Portrait,
+        PrintOrientation::Landscape => NSPaperOrientation::Landscape,
+    };
+
     webview_window
-        .with_webview(|platform| {
+        .with_webview(move |platform| {
             let webview_ptr = platform.inner() as *mut WKWebView;
             if webview_ptr.is_null() {
                 return;
@@ -38,7 +59,25 @@ fn run_native_print(
             // window, valid for the duration of this main-thread closure.
             unsafe {
                 let webview = &*webview_ptr;
+                // Seed a MUTABLE COPY of the shared print info — never mutate the
+                // process-wide `sharedPrintInfo()` singleton — and apply the
+                // chosen paper size (points) + orientation, disabling AppKit's
+                // automatic scaling so the mm-sized print DOM maps 1:1.
                 let print_info = NSPrintInfo::sharedPrintInfo();
+                let print_info = print_info.copy();
+                print_info.setPaperSize(paper_size);
+                print_info.setOrientation(paper_orientation);
+                // Zero the imageable-area margins so the full-bleed, mm-sized
+                // print DOM (CSS `@page { margin: 0 }`) maps 1:1 onto the sheet.
+                // Without this the default 1-inch `NSPrintInfo` margins shrink
+                // the imageable area and, with `Clip` pagination below, crop the
+                // page box's right/bottom edges.
+                print_info.setTopMargin(0.0);
+                print_info.setBottomMargin(0.0);
+                print_info.setLeftMargin(0.0);
+                print_info.setRightMargin(0.0);
+                print_info.setHorizontalPagination(NSPrintingPaginationMode::Clip);
+                print_info.setVerticalPagination(NSPrintingPaginationMode::Automatic);
                 let operation = webview.printOperationWithPrintInfo(&print_info);
                 operation.setShowsPrintPanel(true);
                 operation.setShowsProgressPanel(true);
@@ -63,6 +102,9 @@ fn run_native_print(
 #[cfg(target_os = "windows")]
 fn run_native_print(
     webview_window: &tauri::WebviewWindow,
+    _paper_width_mm: f64,
+    _paper_height_mm: f64,
+    _orientation: PrintOrientation,
 ) -> Result<(), PrintCommandError> {
     use webview2_com::Microsoft::Web::WebView2::Win32::{
         ICoreWebView2_16, COREWEBVIEW2_PRINT_DIALOG_KIND_BROWSER,
@@ -91,6 +133,9 @@ fn run_native_print(
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn run_native_print(
     _webview_window: &tauri::WebviewWindow,
+    _paper_width_mm: f64,
+    _paper_height_mm: f64,
+    _orientation: PrintOrientation,
 ) -> Result<(), PrintCommandError> {
     Err(PrintCommandError::print(
         "native printing is not supported on this platform",

@@ -11,6 +11,8 @@ import {
   type ImageEntry,
   type ImageMetadata,
   type OkResponse,
+  type PrintCurrentViewRequest,
+  DEFAULT_PRINT_REQUEST,
   type ProbedImage,
   type ProbeImageRequest,
   type ReadImageMetadataRequest,
@@ -161,11 +163,21 @@ export function revealInFileManager(
 
 /**
  * Trigger the OS-native print dialog for the current view. The command acts on
- * the main webview (which renders the print-only layer under `@media print`),
- * so it carries no payload. Resolves once the dialog has been presented.
+ * the main webview (which renders the store-driven print-only DOM under
+ * `@media print`) and is told the selected paper size (mm) + orientation so the
+ * macOS native path can seed a matching `NSPrintInfo`. The real caller is the
+ * PrintDialog, which always passes explicit paper size + orientation; the
+ * `Ctrl/Cmd+P` shortcut now opens that dialog rather than quick-printing. The
+ * `DEFAULT_PRINT_REQUEST` default is retained only as a safe fallback (and is
+ * exercised by tests). Resolves once the dialog has been presented.
  */
-export function printCurrentView(): Promise<void> {
-  return invokeCommand<void>(IPC_COMMANDS.printCurrentView, {});
+export function printCurrentView(
+  request: PrintCurrentViewRequest = DEFAULT_PRINT_REQUEST,
+): Promise<void> {
+  return invokeCommand<void>(
+    IPC_COMMANDS.printCurrentView,
+    request as unknown as InvokeArgs,
+  );
 }
 
 /**

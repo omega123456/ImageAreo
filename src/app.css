@@ -21,30 +21,35 @@
 
 /*
   Print page setup. There is no Tailwind utility for the `@page` at-rule, so the
-  page-box margin is reset here — the single permitted exception to the no-CSS
-  rule (page-box configuration, not element styling). Without `margin: 0`, the
-  WebKit print engine maps `100vh` to the *full* paper height including the
-  default page margins, so the fit-to-page `PrintLayout` box (`print:h-screen`)
-  is taller than the printable area and spills a sliver onto a second, near-empty
-  page. Zeroing the page margin makes `100vh` equal the printable area, so the
-  image prints centered on exactly one page.
+  page-box margin is reset here — a permitted exception to the no-CSS rule
+  (page-box configuration, not element styling). The dynamic
+  `@page { size: <W>mm <H>mm }` is emitted at runtime by `PrintPageLayout` from
+  the print store (the matching documented exception). Zeroing the margin makes
+  the mm-sized in-flow page boxes map 1:1 onto the printable area.
+
+  The store-driven `PrintPageLayout` emits ONE in-flow, mm-sized page box per
+  copy, separated by `break-after: page`. The previous single-page rules
+  (`height: 100%` + `overflow: hidden` on html/body) clipped every page after
+  the first, so they are removed. We keep `margin: 0` and instead suppress only
+  the spurious trailing blank page that the `break-after: page` on the LAST page
+  box would otherwise emit.
 */
 @media print {
   @page {
     margin: 0;
   }
-  /*
-    Give the print root a definite page-sized height and clamp it to one
-    viewport. `height: 100%` makes `body` resolve to the printable page box so
-    the PrintLayout `print:h-full` flex box can center the image exactly;
-    `overflow: hidden` suppresses the trailing near-empty page WebKit otherwise
-    emits from sub-pixel overflow.
-  */
   html,
   body {
-    height: 100%;
     margin: 0;
-    overflow: hidden;
+  }
+  /*
+    Drop the page break after the final page box so the job ends on the last
+    real page instead of emitting a trailing blank sheet. Targets the print
+    layout's last page directly (the component marks each page box with
+    `data-testid="print-page"`); generic `break-after: page` stays on the rest.
+  */
+  [data-testid="print-page"]:last-child {
+    break-after: auto;
   }
 }
 

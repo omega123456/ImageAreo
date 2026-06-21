@@ -104,6 +104,10 @@ core-foundation-sys = "0.8"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSPrintInfo", "NSPrintOperation", "NSResponder", "NSWindow"] }
 objc2-web-kit = { version = "0.3", features = ["WKWebView"] }
+# Already in the tree via objc2-app-kit; pulled in directly so the paper-aware
+# print path can build an `NSSize` (NSGeometry) and copy the shared `NSPrintInfo`
+# via the `NSCopying` trait (no new crate enters the dependency graph).
+objc2-foundation = { version = "0.3", features = ["NSGeometry"] }
 
 [dev-dependencies]
 # Integration-test harness (P3). `tempfile` builds isolated fixture folders;

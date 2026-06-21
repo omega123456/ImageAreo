@@ -11,7 +11,8 @@
   import EnhanceControl from "./lib/components/EnhanceControl.svelte";
   import ImageInfoCard from "./lib/components/ImageInfoCard.svelte";
   import SharpenIndicator from "./lib/components/SharpenIndicator.svelte";
-  import PrintLayout from "./lib/components/PrintLayout.svelte";
+  import PrintPageLayout from "./lib/components/PrintPageLayout.svelte";
+  import PrintDialog from "./lib/components/PrintDialog.svelte";
   import { updater } from "./lib/stores/updater.svelte";
   import { galleryUi } from "./lib/stores/gallery-ui.svelte";
   import { chrome } from "./lib/stores/chrome.svelte";
@@ -19,6 +20,7 @@
   import { uiScale } from "./lib/stores/ui-scale.svelte";
   import { ui } from "./lib/stores/ui.svelte";
   import { viewer } from "./lib/stores/viewer.svelte";
+  import { print } from "./lib/stores/print.svelte";
   import { imageInfo } from "./lib/stores/image-info.svelte";
   import { isRawFormat, supportedExtensions } from "./lib/utils/format";
   import {
@@ -29,7 +31,6 @@
     registerEntryPoints,
   } from "./lib/utils/open-entry";
   import { createKeyHandler } from "./lib/utils/keybindings";
-  import { printCurrentView } from "./lib/ipc";
   import { windowTitle, writeTitle } from "./lib/utils/native-window";
   import type { ZoomPanController } from "./lib/utils/zoom-pan-controller";
 
@@ -196,7 +197,7 @@
       rotateRight: () => viewer.rotateRight(),
       toggleFullscreen: () => void ui.toggleFullscreen(),
       toggleInfo: () => ui.toggleInfo(),
-      print: () => void printCurrentView(),
+      print: () => print.openWindow(),
       escape: handleEscape,
     },
     () => viewer.status === "ready",
@@ -383,4 +384,5 @@
 
 <SettingsDrawer />
 <UpdateToast />
-<PrintLayout />
+<PrintPageLayout />
+<PrintDialog />

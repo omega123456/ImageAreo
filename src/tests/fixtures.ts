@@ -133,7 +133,9 @@ export const IPC_FIXTURES: Record<string, IpcHandler> = {
   }),
   copy_image_to_clipboard: () => ({ ok: true }),
   reveal_in_file_manager: () => ({ ok: true }),
-  print_current_view: () => ({ ok: true }),
+  // Accepts the paper size (mm) + orientation args from Phase 3 while keeping a
+  // `void`-compatible return shape so the quick-print contract holds.
+  print_current_view: (_args) => ({ ok: true }),
   query_file_associations: () => [
     { ext: "jpg", isDefault: true },
     { ext: "png", isDefault: false },

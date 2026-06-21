@@ -215,3 +215,29 @@ export interface ImageMetadata {
 export interface ReadImageMetadataRequest {
   path: string;
 }
+
+/** Page orientation for the native print job. Mirrors the print store. */
+export type PrintOrientation = "portrait" | "landscape";
+
+/**
+ * Arguments for `print_current_view`: the selected paper size in millimetres
+ * (portrait/native dimensions as stored) plus the chosen orientation. The
+ * backend converts mm → points and applies them to a copied `NSPrintInfo`.
+ */
+export interface PrintCurrentViewRequest {
+  paperWidthMm: number;
+  paperHeightMm: number;
+  orientation: PrintOrientation;
+}
+
+/**
+ * Fallback print request (US Letter portrait), matching the print store's
+ * defaults. The real caller (PrintDialog) always passes explicit args, so this
+ * is only a safe default for the optional-arg `printCurrentView` and is
+ * exercised by tests; `Ctrl/Cmd+P` opens the dialog rather than quick-printing.
+ */
+export const DEFAULT_PRINT_REQUEST: PrintCurrentViewRequest = {
+  paperWidthMm: 215.9,
+  paperHeightMm: 279.4,
+  orientation: "portrait",
+};

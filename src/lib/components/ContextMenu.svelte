@@ -3,11 +3,8 @@
   import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 
   import { viewer } from "../stores/viewer.svelte";
-  import {
-    copyImageToClipboard,
-    printCurrentView,
-    revealInFileManager,
-  } from "../ipc";
+  import { copyImageToClipboard, revealInFileManager } from "../ipc";
+  import { print } from "../stores/print.svelte";
   import { icons, ICON_SIZE, ICON_WEIGHT } from "../icons";
   import type { Component } from "svelte";
 
@@ -69,7 +66,7 @@
       icon: icons.print,
       shortcut: "Ctrl+P",
       dividerBefore: true,
-      run: () => printCurrentView(),
+      run: () => print.openWindow(),
     },
   ];
 

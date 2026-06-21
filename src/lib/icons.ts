@@ -20,7 +20,9 @@ import {
   ArrowCircleUpIcon,
   ArrowClockwiseIcon,
   ArrowCounterClockwiseIcon,
+  ArrowsInIcon,
   ArrowsOutIcon,
+  ArticleIcon,
   CornersInIcon,
   CornersOutIcon,
   CaretLeftIcon,
@@ -32,15 +34,22 @@ import {
   FolderOpenIcon,
   FrameCornersIcon,
   GearIcon,
+  GridFourIcon,
+  GridNineIcon,
   ImageBrokenIcon,
   ImageIcon,
   InfoIcon,
   MagnifyingGlassIcon,
   MagnifyingGlassMinusIcon,
   MagnifyingGlassPlusIcon,
+  MinusIcon,
   PaletteIcon,
+  PlusIcon,
   PrinterIcon,
   ProhibitIcon,
+  RectangleIcon,
+  RowsIcon,
+  SquaresFourIcon,
   WarningCircleIcon,
   XIcon,
 } from "phosphor-svelte";
@@ -86,6 +95,19 @@ export const icons = {
   copyPath: ClipboardIcon,
   reveal: MagnifyingGlassIcon,
   print: PrinterIcon,
+
+  // --- Print templates ---
+  printFull: ArticleIcon,
+  printTwoUp: RowsIcon,
+  printFourUp: GridFourIcon,
+  printNineUp: GridNineIcon,
+  printContact: SquaresFourIcon,
+  printNamed: RectangleIcon,
+
+  // --- Print controls ---
+  printFit: ArrowsInIcon,
+  stepUp: PlusIcon,
+  stepDown: MinusIcon,
 
   // --- Chrome toggles / panels ---
   filmstrip: FilmStripIcon,

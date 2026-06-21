@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { RowsIcon } from "phosphor-svelte";
+
 import {
   ACTIVE_CAPABLE_ICONS,
   ICON_SIZE,
@@ -33,6 +35,16 @@ const REQUIRED_NAMES: IconName[] = [
   "updateAvailable",
   "imageFailed",
   "emptyPlaceholder",
+  "print",
+  "printFull",
+  "printTwoUp",
+  "printFourUp",
+  "printNineUp",
+  "printContact",
+  "printNamed",
+  "printFit",
+  "stepUp",
+  "stepDown",
 ];
 
 describe("semantic icon module", () => {
@@ -45,6 +57,12 @@ describe("semantic icon module", () => {
         "function",
       );
     }
+  });
+
+  it("maps the 2-up print template to the stacked-rows glyph", () => {
+    // The 2-up layout is a 1-col × 2-row stacked grid, so its glyph is the
+    // horizontal Rows icon (not Columns).
+    expect(icons.printTwoUp).toBe(RowsIcon);
   });
 
   it("exposes no undefined entries in the map", () => {

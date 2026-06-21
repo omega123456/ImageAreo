@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/svelte";
 
 import ImageViewer from "../lib/components/ImageViewer.svelte";
 import { viewer } from "../lib/stores/viewer.svelte";
+import { print } from "../lib/stores/print.svelte";
 import { ipc } from "./ipc-mock";
 
 /** Render the viewer with a loaded native image and return the canvas container. */
@@ -160,15 +161,15 @@ describe("ContextMenu", () => {
     });
   });
 
-  it("calls print_current_view when the Print item is clicked", async () => {
+  it("opens the in-app print window when the Print item is clicked", async () => {
+    print.closeWindow();
     const canvas = renderWithImage("/photos/poster.jpg");
     await openMenu(canvas);
     await fireEvent.click(screen.getByRole("menuitem", { name: /Print/ }));
-    await waitFor(() =>
-      expect(ipc.calls("print_current_view")).toHaveLength(1),
-    );
-    // The command acts on the main webview and carries no payload.
-    expect(ipc.calls("print_current_view")[0]).toEqual({});
+    // Phase 7: the menu trigger opens the in-app dialog rather than invoking the
+    // native print directly. No IPC fires from the menu itself.
+    await waitFor(() => expect(print.open).toBe(true));
+    expect(ipc.calls("print_current_view")).toHaveLength(0);
     // Menu closes after a selection.
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
@@ -194,11 +195,10 @@ describe("ContextMenu", () => {
       screen.getByRole("menuitem", { name: /Print/ }),
     );
 
-    // Enter selects the focused (Print) item.
+    // Enter selects the focused (Print) item, opening the in-app dialog.
+    print.closeWindow();
     await fireEvent.keyDown(menu, { key: "Enter" });
-    await waitFor(() =>
-      expect(ipc.calls("print_current_view")).toHaveLength(1),
-    );
+    await waitFor(() => expect(print.open).toBe(true));
   });
 
   it("supports Home/End jumps and Space selection", async () => {
