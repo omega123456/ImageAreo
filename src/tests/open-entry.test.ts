@@ -9,14 +9,17 @@ import {
   openPath,
   pathFromDropPayload,
   registerEntryPoints,
+  restoreLastSession,
 } from "../lib/utils/open-entry";
 import { IPC_EVENTS, MENU_ACTIONS } from "../lib/ipc/commands";
 import { folder } from "../lib/stores/folder.svelte";
+import { session } from "../lib/stores/session.svelte";
 import { viewer } from "../lib/stores/viewer.svelte";
 
 beforeEach(() => {
   folder.reset();
   viewer.reset();
+  session.resetForTests();
 });
 
 describe("openPath", () => {
@@ -361,5 +364,78 @@ describe("registerEntryPoints", () => {
     await ipc.emit(IPC_EVENTS.openPath, "");
     expect(folder.current).toBeNull();
     unlisten();
+  });
+
+  it("restores the last-viewed image when no launch path is buffered", async () => {
+    ipc.override("frontend_ready", () => null);
+    ipc.override("plugin:store|get", (args) =>
+      String(args?.key ?? "") === "lastImagePath"
+        ? ["/photos/remembered.jpg", true]
+        : [undefined, false],
+    );
+    ipc.override("scan_folder", () => [
+      { path: "/photos/remembered.jpg", name: "remembered.jpg", modified: 1 },
+    ]);
+
+    const unlisten = await registerEntryPoints({});
+
+    expect(folder.current?.path).toBe("/photos/remembered.jpg");
+    expect(viewer.path).toBe("/photos/remembered.jpg");
+    unlisten();
+  });
+
+  it("prefers a buffered launch path over the remembered image", async () => {
+    ipc.override("frontend_ready", () => "/photos/cold.jpg");
+    ipc.override("plugin:store|get", (args) =>
+      String(args?.key ?? "") === "lastImagePath"
+        ? ["/photos/remembered.jpg", true]
+        : [undefined, false],
+    );
+    ipc.override("scan_folder", () => [
+      { path: "/photos/cold.jpg", name: "cold.jpg", modified: 1 },
+    ]);
+
+    const unlisten = await registerEntryPoints({});
+
+    expect(folder.current?.path).toBe("/photos/cold.jpg");
+    unlisten();
+  });
+});
+
+describe("restoreLastSession", () => {
+  it("opens the persisted last image", async () => {
+    ipc.override("plugin:store|get", (args) =>
+      String(args?.key ?? "") === "lastImagePath"
+        ? ["/photos/last.jpg", true]
+        : [undefined, false],
+    );
+    ipc.override("scan_folder", () => [
+      { path: "/photos/last.jpg", name: "last.jpg", modified: 1 },
+    ]);
+
+    await restoreLastSession();
+
+    expect(viewer.path).toBe("/photos/last.jpg");
+  });
+
+  it("no-ops when nothing was remembered", async () => {
+    await restoreLastSession();
+
+    expect(viewer.path).toBeNull();
+    expect(ipc.calls("scan_folder")).toHaveLength(0);
+  });
+});
+
+describe("openPath session recording", () => {
+  it("records the opened image as the last-viewed path", async () => {
+    ipc.override("scan_folder", () => [
+      { path: "/photos/a.jpg", name: "a.jpg", modified: 1 },
+    ]);
+
+    await openPath("/photos/a.jpg");
+
+    expect(ipc.calls("plugin:store|set")).toContainEqual(
+      expect.objectContaining({ key: "lastImagePath", value: "/photos/a.jpg" }),
+    );
   });
 });

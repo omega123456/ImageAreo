@@ -17,6 +17,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { frontendReady } from "../ipc";
 import { IPC_EVENTS, MENU_ACTIONS, type MenuAction } from "../ipc/commands";
 import { folder } from "../stores/folder.svelte";
+import { session } from "../stores/session.svelte";
 import { viewer } from "../stores/viewer.svelte";
 
 let openRequestId = 0;
@@ -44,7 +45,21 @@ export async function openPath(path: string): Promise<void> {
     return;
   }
 
+  void session.setLastImagePath(target);
   await viewer.openPath(target);
+}
+
+/**
+ * Reopen the image the user was last viewing, restored from the persisted
+ * session. Best-effort: a missing/unreadable file leaves the viewer empty. Used
+ * at launch when no file-association/launch path was provided, so a normal
+ * close+reopen — or an updater relaunch — lands back on the last image.
+ */
+export async function restoreLastSession(): Promise<void> {
+  await session.initialize();
+  const path = session.lastImagePath;
+  if (!path) return;
+  await openPath(path);
 }
 
 /** Jump to an image index in the current folder and load it into the viewer. */
@@ -52,6 +67,7 @@ export async function goToIndex(index: number): Promise<void> {
   const before = folder.currentIndex;
   const entry = folder.selectIndex(index);
   if (!entry || folder.currentIndex === before) return;
+  void session.setLastImagePath(entry.path);
   await viewer.openPath(entry.path);
 }
 
@@ -65,6 +81,7 @@ async function step(advance: () => { path: string } | null): Promise<void> {
   const before = folder.currentIndex;
   const entry = advance();
   if (!entry || folder.currentIndex === before) return;
+  void session.setLastImagePath(entry.path);
   await viewer.openPath(entry.path);
 }
 
@@ -147,7 +164,8 @@ export function dispatchMenuAction(
  * 2. Listen for native menu events and route them to `handlers`.
  * 3. Listen for native webview drag-drop "drop" events and open the path.
  * 4. Signal `frontend_ready`; if the backend buffered a cold-launch path, open
- *    it now (the buffering closes the macOS Opened-before-ready race).
+ *    it now (the buffering closes the macOS Opened-before-ready race). With no
+ *    launch path, restore the last-viewed image from the persisted session.
  *
  * Returns an unlisten function that detaches every listener.
  */
@@ -170,9 +188,13 @@ export async function registerEntryPoints(
   });
 
   // Handshake: tell the backend we are ready and flush any buffered launch path.
+  // With no launch path (normal start, or an updater relaunch), fall back to
+  // reopening the last image the user was viewing.
   const buffered = await frontendReady();
   if (typeof buffered === "string" && buffered.length > 0) {
     await openPath(buffered);
+  } else {
+    await restoreLastSession();
   }
 
   return () => {
