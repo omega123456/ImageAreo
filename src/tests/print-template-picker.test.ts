@@ -18,7 +18,7 @@ describe("PrintTemplatePicker", () => {
     print.template = "full";
   });
 
-  it("renders a radiogroup with the nine templates in order", () => {
+  it("renders a radiogroup with the five templates in order", () => {
     render(PrintTemplatePicker);
 
     const group = screen.getByRole("radiogroup", { name: "Layout template" });

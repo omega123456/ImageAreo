@@ -16,9 +16,6 @@ export interface SizeMm {
 /** Identifier for a standard paper size. */
 export type PaperSizeId = "letter" | "a4" | "a3" | "legal" | "a5";
 
-/** Identifier for a named photo-size cell. */
-export type NamedSizeId = "photo4x6" | "photo5x7" | "photo8x10" | "photo10x15";
-
 /** Identifier for a margin preset. */
 export type MarginId = "none" | "normal" | "wide";
 
@@ -29,19 +26,10 @@ export type Orientation = "portrait" | "landscape";
 export type FitMode = "fit" | "fill";
 
 /** A template kind drives which geometry branch produces its grid descriptor. */
-export type TemplateKind = "grid" | "contact" | "named";
+export type TemplateKind = "grid" | "contact";
 
 /** Identifier for a print template. */
-export type TemplateId =
-  | "full"
-  | "twoUp"
-  | "fourUp"
-  | "nineUp"
-  | "contact"
-  | "photo4x6"
-  | "photo5x7"
-  | "photo8x10"
-  | "photo10x15";
+export type TemplateId = "full" | "twoUp" | "fourUp" | "nineUp" | "contact";
 
 /**
  * Standard paper sizes in mm, portrait. Letter/Legal are imperial-derived
@@ -62,25 +50,6 @@ export const PAPER_SIZE_LABELS: Record<PaperSizeId, string> = {
   a3: "A3",
   legal: "Legal",
   a5: "A5",
-} as const;
-
-/**
- * Named photo-size cell dimensions in mm, portrait. 4×6/5×7/8×10 are inches
- * (×25.4); 10×15 is centimetres.
- */
-export const NAMED_SIZES: Record<NamedSizeId, SizeMm> = {
-  photo4x6: { widthMm: 101.6, heightMm: 152.4 },
-  photo5x7: { widthMm: 127, heightMm: 177.8 },
-  photo8x10: { widthMm: 203.2, heightMm: 254 },
-  photo10x15: { widthMm: 100, heightMm: 150 },
-} as const;
-
-/** Human-readable label per named photo size. */
-export const NAMED_SIZE_LABELS: Record<NamedSizeId, string> = {
-  photo4x6: "4×6 in",
-  photo5x7: "5×7 in",
-  photo8x10: "8×10 in",
-  photo10x15: "10×15 cm",
 } as const;
 
 /** Margin preset, in mm applied to all four edges. */
@@ -106,14 +75,11 @@ export interface Template {
   cols?: number;
   /** Fixed row count — only for `grid` kinds. */
   rows?: number;
-  /** Referenced photo size — only for `named` kinds. */
-  namedSize?: NamedSizeId;
 }
 
 /**
- * The nine-template catalog: four equal-division grids, one contact sheet, and
- * four named photo sizes. Icon keys reference {@link IconName} registered in
- * `icons.ts`.
+ * The five-template catalog: four equal-division grids and one contact sheet.
+ * Icon keys reference {@link IconName} registered in `icons.ts`.
  */
 export const TEMPLATES: Record<TemplateId, Template> = {
   full: { id: "full", label: "Full page", icon: "printFull", kind: "grid", cols: 1, rows: 1 },
@@ -121,10 +87,6 @@ export const TEMPLATES: Record<TemplateId, Template> = {
   fourUp: { id: "fourUp", label: "4-up", icon: "printFourUp", kind: "grid", cols: 2, rows: 2 },
   nineUp: { id: "nineUp", label: "9-up", icon: "printNineUp", kind: "grid", cols: 3, rows: 3 },
   contact: { id: "contact", label: "Contact sheet", icon: "printContact", kind: "contact" },
-  photo4x6: { id: "photo4x6", label: NAMED_SIZE_LABELS.photo4x6, icon: "printNamed", kind: "named", namedSize: "photo4x6" },
-  photo5x7: { id: "photo5x7", label: NAMED_SIZE_LABELS.photo5x7, icon: "printNamed", kind: "named", namedSize: "photo5x7" },
-  photo8x10: { id: "photo8x10", label: NAMED_SIZE_LABELS.photo8x10, icon: "printNamed", kind: "named", namedSize: "photo8x10" },
-  photo10x15: { id: "photo10x15", label: NAMED_SIZE_LABELS.photo10x15, icon: "printNamed", kind: "named", namedSize: "photo10x15" },
 } as const;
 
 /** Display order for the template catalog in the UI. */
@@ -134,10 +96,6 @@ export const TEMPLATE_ORDER: TemplateId[] = [
   "fourUp",
   "nineUp",
   "contact",
-  "photo4x6",
-  "photo5x7",
-  "photo8x10",
-  "photo10x15",
 ];
 
 /** Contact-sheet fixed cell grid: portrait 5×7, landscape 7×5 (35 cells). */

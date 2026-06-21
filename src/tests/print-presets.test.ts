@@ -8,16 +8,12 @@ import {
   CONTACT_LANDSCAPE,
   CONTACT_PORTRAIT,
   MARGIN_PRESETS,
-  NAMED_SIZES,
-  NAMED_SIZE_LABELS,
   PAPER_SIZES,
   PAPER_SIZE_LABELS,
   TEMPLATES,
   TEMPLATE_ORDER,
   type MarginId,
-  type NamedSizeId,
   type PaperSizeId,
-  type TemplateId,
 } from "../lib/utils/print-presets";
 
 describe("print presets — paper sizes", () => {
@@ -42,21 +38,6 @@ describe("print presets — paper sizes", () => {
   });
 });
 
-describe("print presets — named photo sizes", () => {
-  it("defines the four named sizes with exact mm cell dims", () => {
-    expect(NAMED_SIZES.photo4x6).toEqual({ widthMm: 101.6, heightMm: 152.4 });
-    expect(NAMED_SIZES.photo5x7).toEqual({ widthMm: 127, heightMm: 177.8 });
-    expect(NAMED_SIZES.photo8x10).toEqual({ widthMm: 203.2, heightMm: 254 });
-    expect(NAMED_SIZES.photo10x15).toEqual({ widthMm: 100, heightMm: 150 });
-  });
-
-  it("labels every named size", () => {
-    for (const id of Object.keys(NAMED_SIZES) as NamedSizeId[]) {
-      expect(NAMED_SIZE_LABELS[id]).toBeTruthy();
-    }
-  });
-});
-
 describe("print presets — margins", () => {
   it("defines None/Normal/Wide with exact mm values", () => {
     expect(MARGIN_PRESETS.none.marginMm).toBe(0);
@@ -72,9 +53,9 @@ describe("print presets — margins", () => {
 });
 
 describe("print presets — template catalog", () => {
-  it("contains nine templates in display order", () => {
-    expect(TEMPLATE_ORDER).toHaveLength(9);
-    expect(new Set(TEMPLATE_ORDER).size).toBe(9);
+  it("contains five templates in display order", () => {
+    expect(TEMPLATE_ORDER).toHaveLength(5);
+    expect(new Set(TEMPLATE_ORDER).size).toBe(5);
     for (const id of TEMPLATE_ORDER) {
       expect(TEMPLATES[id]).toBeDefined();
     }
@@ -91,20 +72,6 @@ describe("print presets — template catalog", () => {
     expect(TEMPLATES.contact.kind).toBe("contact");
     expect(TEMPLATES.contact.cols).toBeUndefined();
     expect(TEMPLATES.contact.rows).toBeUndefined();
-  });
-
-  it("defines four named templates referencing a named size", () => {
-    const named: TemplateId[] = [
-      "photo4x6",
-      "photo5x7",
-      "photo8x10",
-      "photo10x15",
-    ];
-    for (const id of named) {
-      expect(TEMPLATES[id].kind).toBe("named");
-      const ref = TEMPLATES[id].namedSize as NamedSizeId;
-      expect(NAMED_SIZES[ref]).toBeDefined();
-    }
   });
 
   it("references a registered icon for every template", () => {

@@ -8,7 +8,6 @@ import {
   CONTACT_LANDSCAPE,
   CONTACT_PORTRAIT,
   MARGIN_PRESETS,
-  NAMED_SIZES,
   PAPER_SIZES,
   TEMPLATES,
   type MarginId,
@@ -74,10 +73,6 @@ export function printableArea(
  * - `grid` templates divide the printable area equally by their fixed cols/rows.
  * - `contact` sheets use a fixed 35-cell grid (portrait 5×7, landscape 7×5),
  *   each cell an equal division of the printable area.
- * - `named` sizes use fixed-mm cells, floor-packed top-left:
- *   `cols = max(1, floor(printableW/cellW))`, `rows = max(1, floor(printableH/cellH))`.
- *   The clamp to ≥1 guarantees at least one cell even when the named size
- *   exceeds the printable area.
  */
 export function gridDescriptor(
   templateId: TemplateId,
@@ -87,19 +82,6 @@ export function gridDescriptor(
 ): GridDescriptor {
   const template = TEMPLATES[templateId];
   const area = printableArea(paperSize, orientation, margins);
-
-  if (template.kind === "named") {
-    const cell = NAMED_SIZES[template.namedSize!];
-    const cols = Math.max(1, Math.floor(area.widthMm / cell.widthMm));
-    const rows = Math.max(1, Math.floor(area.heightMm / cell.heightMm));
-    return {
-      cols,
-      rows,
-      cellWidthMm: cell.widthMm,
-      cellHeightMm: cell.heightMm,
-      count: cols * rows,
-    };
-  }
 
   const { cols, rows } =
     template.kind === "contact"
