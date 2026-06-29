@@ -173,6 +173,70 @@ describe("Filmstrip", () => {
     expect(arg.left).toBeGreaterThan(0);
   });
 
+  it("does not re-center when the strip is scrolled without a selection change", async () => {
+    seedFolder(80);
+    folder.currentIndex = 40;
+    render(Filmstrip);
+    await screen.findByRole("listbox", { name: "Folder images" });
+    await tick();
+    await flushAsyncWork();
+
+    const listbox = screen.getByRole("listbox", { name: "Folder images" });
+    let scrollLeft = 0;
+    Object.defineProperty(listbox, "scrollLeft", {
+      configurable: true,
+      get: () => scrollLeft,
+      set: (value: number) => {
+        scrollLeft = value;
+      },
+    });
+
+    // Once centered, scrolling the strip must not snap it back to the active
+    // thumb — only navigation re-centers.
+    scrollToSpy.mockClear();
+    scrollLeft = 200;
+    await fireEvent.scroll(listbox);
+    await tick();
+    await flushAsyncWork();
+
+    expect(scrollToSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not re-center when the viewport resizes without a selection change", async () => {
+    // Reproduces the real-browser path jsdom's no-op ResizeObserver hides: a
+    // ResizeObserver fire (layout/scroll-coupled) re-runs the auto-center effect
+    // with the same selection. It must NOT snap back to the active thumb.
+    const resizeCallbacks: ResizeObserverCallback[] = [];
+    class CapturingResizeObserver {
+      constructor(cb: ResizeObserverCallback) {
+        resizeCallbacks.push(cb);
+      }
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+    }
+    vi.stubGlobal(
+      "ResizeObserver",
+      CapturingResizeObserver as unknown as typeof ResizeObserver,
+    );
+
+    seedFolder(80);
+    folder.currentIndex = 40;
+    render(Filmstrip);
+    await screen.findByRole("listbox", { name: "Folder images" });
+    await tick();
+    await flushAsyncWork();
+
+    // Selection unchanged; a viewport change fires the observer. No re-center.
+    scrollToSpy.mockClear();
+    widthSpy.mockReturnValue(360);
+    for (const cb of resizeCallbacks) cb([], {} as ResizeObserver);
+    await tick();
+    await flushAsyncWork();
+
+    expect(scrollToSpy).not.toHaveBeenCalled();
+  });
+
   it("marks the current image's thumbnail active", async () => {
     seedFolder(4);
     folder.currentIndex = 2;

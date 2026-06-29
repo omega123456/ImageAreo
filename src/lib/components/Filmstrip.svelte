@@ -134,21 +134,33 @@
     });
   }
 
-  // Auto-center the active thumb whenever the selection changes. The active
-  // index may be outside the rendered window, so center via direct scroll math
+  // The selection index we last auto-centered on. Centering is keyed strictly
+  // to this: only a selection change (arrow keys / click) re-centers. Scrolling,
+  // resize, and density changes re-run this effect too (they touch `viewport`,
+  // `stride`, and the `contentWidth` dependency), but must NOT yank the view
+  // back to the active thumb — so anything other than an index change bails.
+  let lastCenteredIndex = -1;
+
+  // Auto-center the active thumb when the selection changes. The active index
+  // may be outside the rendered window, so center via direct scroll math
   // (windowing keeps the element absent from the DOM until it scrolls in).
   $effect(() => {
-    // Read every reactive input synchronously so the effect re-runs on density
-    // (stride/activeGrowth), viewport, and content-width changes — not just on
-    // selection — and so the math is consistent with the rendered layout.
     const index = folder.currentIndex;
     const node = scroller;
+    // Read layout inputs so the math reflects the current density/viewport, but
+    // these are NOT re-center triggers — only the index is (see guard below).
     const viewport = viewportWidth;
     const itemStride = stride;
     const growth = activeGrowth;
     const half = thumbnailSize / 2;
     const max = Math.max(0, contentWidth - viewport);
     if (index < 0 || !node || viewport <= 0) return;
+
+    // Only re-center on an actual selection change. Bail for every other reason
+    // the effect re-ran (scroll, resize, density) so the strip stays exactly
+    // where the user scrolled it.
+    if (index === lastCenteredIndex) return;
+    lastCenteredIndex = index;
 
     void tick().then(() => {
       const target = growth + index * itemStride + half - viewport / 2;
