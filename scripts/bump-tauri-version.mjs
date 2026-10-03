@@ -110,9 +110,13 @@ function runGit(args, inheritIo = true) {
   })
 }
 
-/** Runs `cargo generate-lockfile` so `Cargo.lock` matches the bumped `[package] version`. */
-function runCargoGenerateLockfile() {
-  execFileSync('cargo', ['generate-lockfile'], {
+/**
+ * Syncs only the workspace's own entry in `Cargo.lock` with the bumped `[package] version`.
+ * `cargo generate-lockfile` would re-resolve every dependency to latest and can pull
+ * mismatched tauri sub-crates (e.g. tauri-macros 2.7 with tauri 2.11), breaking the build.
+ */
+function runCargoLockfileSync() {
+  execFileSync('cargo', ['update', '--workspace'], {
     cwd: tauriDir,
     stdio: 'inherit',
   })
@@ -278,9 +282,9 @@ async function main() {
     console.log(`Updated ${releaseBodyRelative} for GitHub Actions release body.`)
 
     console.log('')
-    console.log('Refreshing src-tauri/Cargo.lock (cargo generate-lockfile)…')
+    console.log('Refreshing src-tauri/Cargo.lock (cargo update --workspace)…')
     try {
-      runCargoGenerateLockfile()
+      runCargoLockfileSync()
     } catch {
       restoreVersionFilesAndReleaseBody(
         raw,
@@ -289,7 +293,7 @@ async function main() {
         releaseBodyPreviousRaw
       )
       console.error(
-        '[bump-tauri-version] cargo generate-lockfile failed; restored previous tauri.conf.json, Cargo.toml, release body, and Cargo.lock. No commit, tag, or push.'
+        '[bump-tauri-version] cargo update --workspace failed; restored previous tauri.conf.json, Cargo.toml, release body, and Cargo.lock. No commit, tag, or push.'
       )
       process.exit(1)
     }
