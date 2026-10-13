@@ -22,8 +22,8 @@ pub const WINDOWS_FILE_EXTS_PATH: &str =
 
 pub const ASSOCIABLE_EXTENSIONS: &[&str] = &[
     "jpg", "jpeg", "png", "gif", "webp", "avif", "tif", "tiff", "bmp", "ico", "heic", "heif",
-    "jxl", "raw", "cr2", "cr3", "nef", "nrw", "arw", "sr2", "srf", "dng", "raf", "rw2", "orf",
-    "pef", "srw", "kdc", "erf", "3fr",
+    "jxl", "svg", "raw", "cr2", "cr3", "nef", "nrw", "arw", "sr2", "srf", "dng", "raf", "rw2",
+    "orf", "pef", "srw", "kdc", "erf", "3fr",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -207,6 +207,7 @@ pub fn uti_for(ext: &str) -> Option<&'static str> {
         "heic" => Some("public.heic"),
         "heif" => Some("public.heif"),
         "jxl" => Some("public.jpeg-xl"),
+        "svg" => Some("public.svg-image"),
         "raw" | "cr2" | "cr3" | "nef" | "nrw" | "arw" | "sr2" | "srf" | "dng" | "raf" | "rw2"
         | "orf" | "pef" | "srw" | "kdc" | "erf" | "3fr" => Some("com.adobe.raw-image"),
         _ => None,

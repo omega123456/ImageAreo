@@ -192,6 +192,11 @@ fn image_public_logic_handles_classification_and_missing_backend_paths() {
     );
     assert!(image::native_extensions().contains(&"jpg"));
     assert!(image::backend_extensions().contains(&"jxl"));
+    assert!(image::backend_extensions().contains(&"svg"));
+    assert_eq!(
+        image::classify_extension("SVG"),
+        Some(image::ImageFormatSupport::NeedsBackend)
+    );
 
     let dir = TempImageDir::new();
     let png = dir.path().join("plain.png");

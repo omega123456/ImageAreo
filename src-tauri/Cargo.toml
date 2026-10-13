@@ -52,6 +52,7 @@ image = { version = "0.25.10", default-features = false, features = ["avif", "bm
 # for anything it does not recognize.
 imagesize = "0.13"
 jxl-oxide = "0.12.5"
+resvg = "0.48"
 # Single-flight coalescing for decode-class work. `moka::future::Cache::get_with`
 # runs the leader once and joins duplicate/returning callers to the same in-flight
 # future. Pinned to 0.12.15, verified during planning to have NO dependency on the

@@ -15,6 +15,28 @@ use common::TempImageDir;
 use imageareo_lib::commands::ProbedImage;
 use imageareo_lib::image::{self, probe, DecodeIntent, MAX_PIXELS};
 
+#[test]
+fn probe_reads_svg_declared_dimensions() {
+    let dir = TempImageDir::new();
+    let svg = dir.write(
+        "icon.svg",
+        br#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50"/>"#,
+    );
+    let probed = probe::probe(&svg).expect("svg should probe");
+    assert_eq!(
+        (probed.width, probed.height, probed.animated),
+        (100, 50, false)
+    );
+
+    let broken = dir.write("broken.svg", b"not svg");
+    assert_eq!(
+        probe::probe(&broken)
+            .expect_err("corrupt svg should fail")
+            .code,
+        "decode_failed"
+    );
+}
+
 fn fixture_image(width: u32, height: u32) -> DynamicImage {
     DynamicImage::ImageRgba8(RgbaImage::from_fn(width, height, |x, y| {
         Rgba([

@@ -108,6 +108,7 @@ fn macos_uti_mapping_covers_common_and_raw_formats() {
     assert_eq!(uti_for("jpeg"), Some("public.jpeg"));
     assert_eq!(uti_for("heic"), Some("public.heic"));
     assert_eq!(uti_for("cr3"), Some("com.adobe.raw-image"));
+    assert_eq!(uti_for("svg"), Some("public.svg-image"));
     assert_eq!(uti_for("txt"), None);
 }
 

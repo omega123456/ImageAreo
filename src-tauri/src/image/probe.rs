@@ -61,6 +61,17 @@ pub fn probe(path: &Path) -> Result<ProbeResult, DecodeImageError> {
 /// fail, the file is corrupt/truncated/unsupported and a structured error is
 /// returned.
 fn read_dimensions(path: &Path) -> Result<(u32, u32), DecodeImageError> {
+    // Neither `imagesize` nor `image` understands SVG.
+    if super::normalized_extension(path).ok().as_deref() == Some("svg") {
+        return match super::svg_dimensions(path) {
+            Some((width, height)) if width > 0 && height > 0 => Ok((width, height)),
+            _ => Err(DecodeImageError::decode(format!(
+                "failed to probe SVG dimensions for {}",
+                path.display()
+            ))),
+        };
+    }
+
     if let Ok(size) = imagesize::size(path) {
         if let (Ok(width), Ok(height)) = (u32::try_from(size.width), u32::try_from(size.height)) {
             if width > 0 && height > 0 {

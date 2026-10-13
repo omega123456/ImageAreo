@@ -59,6 +59,16 @@ fn generate_thumbnail_preserves_aspect_ratio_for_exotic_fixture() {
     assert_cache_path(&thumbnail.path);
 }
 
+#[test]
+fn generate_thumbnail_rasterizes_svg_fixture() {
+    let _cache = common::CacheGuard::new();
+    let thumbnail = thumbnail::generate_thumbnail(&fixture_path("sample.svg"), 20)
+        .expect("svg thumbnail should succeed");
+
+    assert_eq!((thumbnail.width, thumbnail.height), (40, 20));
+    assert_cache_path(&thumbnail.path);
+}
+
 #[tokio::test]
 async fn generate_thumbnail_command_returns_cache_path_for_jxl_fixture() {
     let _cache = common::CacheGuard::new();

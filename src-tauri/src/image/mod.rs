@@ -23,8 +23,8 @@ use serde::{Deserialize, Serialize};
 
 const NATIVE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp"];
 const BACKEND_EXTENSIONS: &[&str] = &[
-    "avif", "tif", "tiff", "bmp", "ico", "heic", "heif", "jxl", "raw", "cr2", "cr3", "nef", "nrw",
-    "arw", "sr2", "srf", "dng", "raf", "rw2", "orf", "pef", "srw", "kdc", "erf", "3fr",
+    "avif", "tif", "tiff", "bmp", "ico", "heic", "heif", "jxl", "svg", "raw", "cr2", "cr3", "nef",
+    "nrw", "arw", "sr2", "srf", "dng", "raf", "rw2", "orf", "pef", "srw", "kdc", "erf", "3fr",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -980,6 +980,7 @@ fn decode_backend_by_extension(
         "tif" | "tiff" | "bmp" | "ico" => decode_with_image_crate(path),
         "heic" | "heif" => decode_heic(path),
         "jxl" => decode_jxl(path),
+        "svg" => decode_svg(path),
         "raw" | "cr2" | "cr3" | "nef" | "nrw" | "arw" | "sr2" | "srf" | "dng" | "raf" | "rw2"
         | "orf" | "pef" | "srw" | "kdc" | "erf" | "3fr" => decode_raw(path, raw_source),
         _ => unreachable!(
@@ -1383,6 +1384,78 @@ fn framebuffer_to_rgba(buffer: jxl_oxide::FrameBuffer) -> Result<RgbaImage, Deco
 
     ImageBuffer::from_vec(width, height, rgba)
         .ok_or_else(|| DecodeImageError::decode("failed to build JPEG XL RGBA image"))
+}
+
+/// Minimum long edge (px) an SVG is rasterized at. Vector sources often declare
+/// icon-sized dimensions; rendering at that size would look soft once zoomed.
+pub const SVG_MIN_RASTER_EDGE: u32 = 2048;
+
+// System fonts are scanned once per process: the scan is far too slow per file.
+fn svg_fontdb() -> std::sync::Arc<resvg::usvg::fontdb::Database> {
+    static FONTDB: std::sync::OnceLock<std::sync::Arc<resvg::usvg::fontdb::Database>> =
+        std::sync::OnceLock::new();
+    FONTDB
+        .get_or_init(|| {
+            let mut db = resvg::usvg::fontdb::Database::new();
+            db.load_system_fonts();
+            std::sync::Arc::new(db)
+        })
+        .clone()
+}
+
+fn parse_svg(path: &Path, fontdb: bool) -> Result<resvg::usvg::Tree, DecodeImageError> {
+    let data = fs::read(path)
+        .map_err(|err| DecodeImageError::io(format!("failed to read {}: {err}", path.display())))?;
+    let mut options = resvg::usvg::Options {
+        resources_dir: path.parent().map(Path::to_path_buf),
+        ..Default::default()
+    };
+    if fontdb {
+        options.fontdb = svg_fontdb();
+    }
+    resvg::usvg::Tree::from_data(&data, &options).map_err(|err| {
+        DecodeImageError::decode(format!("failed to parse {}: {err}", path.display()))
+    })
+}
+
+/// Declared SVG size in px, used by the header probe. Parses without fonts —
+/// text does not affect the document size.
+pub(crate) fn svg_dimensions(path: &Path) -> Option<(u32, u32)> {
+    let size = parse_svg(path, false).ok()?.size();
+    Some((size.width().ceil() as u32, size.height().ceil() as u32))
+}
+
+// ponytail: rasterized once at >= SVG_MIN_RASTER_EDGE, so zooming far past that
+// goes soft; re-render per zoom tier if vector-sharp deep zoom is needed.
+fn decode_svg(path: &Path) -> Result<DynamicImage, DecodeImageError> {
+    let tree = parse_svg(path, true)?;
+    let size = tree.size();
+    let scale = (SVG_MIN_RASTER_EDGE as f32 / size.width().max(size.height())).max(1.0);
+    let width = (size.width() * scale).ceil() as u32;
+    let height = (size.height() * scale).ceil() as u32;
+    let mut pixmap = resvg::tiny_skia::Pixmap::new(width, height).ok_or_else(|| {
+        DecodeImageError::decode(format!(
+            "invalid SVG raster size {width}x{height}: {}",
+            path.display()
+        ))
+    })?;
+    resvg::render(
+        &tree,
+        resvg::tiny_skia::Transform::from_scale(scale, scale),
+        &mut pixmap.as_mut(),
+    );
+
+    let rgba = pixmap
+        .pixels()
+        .iter()
+        .flat_map(|pixel| {
+            let c = pixel.demultiply();
+            [c.red(), c.green(), c.blue(), c.alpha()]
+        })
+        .collect();
+    ImageBuffer::from_vec(width, height, rgba)
+        .map(DynamicImage::ImageRgba8)
+        .ok_or_else(|| DecodeImageError::decode("failed to build SVG RGBA image"))
 }
 
 fn linear_sample_to_u8(sample: f32) -> u8 {

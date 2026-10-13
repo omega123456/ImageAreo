@@ -117,6 +117,57 @@ fn display_intent_decodes_heic_and_jxl_fixtures_to_cache_files() {
 }
 
 #[test]
+fn display_intent_rasterizes_svg_with_alpha_upscaled_to_min_edge() {
+    let _cache = common::CacheGuard::new();
+    let decoded = image::decode_to_cache(&fixture_path("sample.svg"), DecodeIntent::Display)
+        .expect("svg fixture should decode");
+
+    assert_eq!(
+        (decoded.width, decoded.height),
+        (image::SVG_MIN_RASTER_EDGE, image::SVG_MIN_RASTER_EDGE / 2)
+    );
+    // Transparent background → PNG cache, corner pixel stays fully transparent.
+    assert_eq!(
+        decoded.path.extension().and_then(|e| e.to_str()),
+        Some("png")
+    );
+    let pixels = image_rs::open(&decoded.path)
+        .expect("cache png should open")
+        .to_rgba8();
+    assert_eq!(pixels.get_pixel(0, 0)[3], 0);
+    assert_eq!(
+        pixels.get_pixel(decoded.width / 2, decoded.height / 2)[3],
+        255
+    );
+}
+
+#[test]
+fn display_intent_keeps_large_svg_at_intrinsic_size() {
+    let dir = TempImageDir::new();
+    let path = dir.write(
+        "large.svg",
+        br#"<svg xmlns="http://www.w3.org/2000/svg" width="3000" height="1000"/>"#,
+    );
+    let decoded =
+        image::decode_to_cache(&path, DecodeIntent::Display).expect("large svg should decode");
+    assert_eq!((decoded.width, decoded.height), (3000, 1000));
+}
+
+#[test]
+fn display_intent_reports_decode_error_for_corrupt_svg() {
+    let dir = TempImageDir::new();
+    let path = dir.write("broken.svg", b"<svg not xml");
+    let error =
+        image::decode_to_cache(&path, DecodeIntent::Display).expect_err("corrupt svg should fail");
+    assert_eq!(error.code, "decode_failed");
+
+    let missing = dir.path().join("missing.svg");
+    let error = image::decode_to_cache(&missing, DecodeIntent::Display)
+        .expect_err("missing svg should fail");
+    assert_eq!(error.code, "io_error");
+}
+
+#[test]
 fn display_intent_respects_the_long_edge_cap() {
     // A source larger than the display cap is downscaled; one within the cap is
     // passed through unchanged.

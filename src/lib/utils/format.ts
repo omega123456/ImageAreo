@@ -26,6 +26,7 @@ export const NEEDS_BACKEND_EXTENSIONS: ReadonlySet<string> = new Set([
   "heic",
   "heif",
   "jxl",
+  "svg",
   // Camera RAW formats — must stay in sync with is_raw_extension() in src-tauri/src/image/mod.rs.
   "raw",
   "cr2",

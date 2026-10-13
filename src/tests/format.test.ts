@@ -39,7 +39,7 @@ describe("isNativeFormat", () => {
       expect(isNativeFormat(p)).toBe(true);
     },
   );
-  it.each(["a.heic", "a.tiff", "a.cr2", "a.jxl", "a.bmp"])(
+  it.each(["a.heic", "a.tiff", "a.cr2", "a.jxl", "a.bmp", "a.svg"])(
     "treats %s as non-native",
     (p) => {
       expect(isNativeFormat(p)).toBe(false);

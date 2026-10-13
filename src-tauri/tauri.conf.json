@@ -75,7 +75,8 @@
           "raf",
           "srw",
           "pef",
-          "jxl"
+          "jxl",
+          "svg"
         ],
         "name": "Image",
         "description": "Image file",
