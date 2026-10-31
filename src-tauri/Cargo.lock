@@ -2279,7 +2279,7 @@ dependencies = [
 
 [[package]]
 name = "imageareo"
-version = "1.7.1"
+version = "1.7.2"
 dependencies = [
  "alloc-stdlib",
  "arboard",
