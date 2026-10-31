@@ -37,6 +37,37 @@ fn spawn_macos_new_instance(path: &str) -> bool {
     }
 }
 
+/// Recover a launch whose main window failed to create: relaunch this exe with
+/// the same arguments after a backoff, or give up once attempts run out. Never
+/// returns — a process without its window would otherwise linger forever.
+/// (OS process side effect — the retry policy is tested in `startup`.)
+fn recover_from_failed_main_window(attempt: u32) -> ! {
+    match startup::relaunch_plan(attempt) {
+        Some((next_attempt, delay)) => {
+            log::warn!(
+                target: "startup",
+                "main window failed to create (attempt {attempt}/{}); relaunching in {delay:?}",
+                startup::MAX_LAUNCH_ATTEMPTS
+            );
+            std::thread::sleep(delay);
+            let spawned = std::env::current_exe().and_then(|exe| {
+                std::process::Command::new(exe)
+                    .args(std::env::args_os().skip(1))
+                    .env(startup::LAUNCH_ATTEMPT_ENV, next_attempt.to_string())
+                    .spawn()
+            });
+            if let Err(err) = spawned {
+                log::error!(target: "startup", "relaunch failed: {err}");
+            }
+        }
+        None => log::error!(
+            target: "startup",
+            "main window failed to create after {attempt} attempts; giving up"
+        ),
+    }
+    std::process::exit(1)
+}
+
 /// Signal that the frontend has registered its event listeners and is ready to
 /// receive the initial launch path. Returns the buffered path (if any) so the
 /// frontend can open it directly — closing the macOS Opened-before-ready race.
@@ -91,9 +122,11 @@ pub fn run() {
         logging::logger::install_global(std::sync::Arc::clone(logger));
     }
     logging::logger::install_panic_hook();
+    let launch_attempt =
+        startup::parse_launch_attempt(std::env::var(startup::LAUNCH_ATTEMPT_ENV).ok().as_deref());
     log::info!(
         target: "startup",
-        "launch v{} os={} args={:?} cwd={:?}",
+        "launch v{} attempt={launch_attempt} os={} args={:?} cwd={:?}",
         env!("CARGO_PKG_VERSION"),
         std::env::consts::OS,
         std::env::args_os().collect::<Vec<_>>(),
@@ -136,14 +169,22 @@ pub fn run() {
                 payload.url()
             );
         })
-        .setup(|app| {
+        .setup(move |app| {
+            use tauri::Manager;
             // Tauri builds the config windows (window + WebView2/WKWebView)
-            // right before calling this hook.
+            // right before calling this hook, but a failed webview creation is
+            // only logged: the label stays registered with no native window
+            // behind it, so a native-window query is the reliable check.
+            let main_window_ok = app
+                .get_webview_window("main")
+                .is_some_and(|window| window.is_visible().is_ok());
+            if !main_window_ok {
+                recover_from_failed_main_window(launch_attempt);
+            }
             log::info!(target: "startup", "setup: main window and webview created");
             // The decode scheduler spawns per-class dispatcher tasks on the Tauri
             // async runtime, so it must be constructed inside `setup` (which runs
             // within the runtime) rather than during builder configuration.
-            use tauri::Manager;
             app.manage(scheduler::Scheduler::new());
 
             if menu::should_attach_native_menu() {

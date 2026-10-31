@@ -18,9 +18,42 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::Duration;
 
 /// The event name emitted to the frontend carrying a path to open.
 pub const OPEN_PATH_EVENT: &str = "imageareo://open-path";
+
+/// Carries the 1-based launch attempt into a relaunched process.
+pub const LAUNCH_ATTEMPT_ENV: &str = "IMAGEAREO_LAUNCH_ATTEMPT";
+
+/// Total launches (the first plus relaunches) before giving up on a main
+/// window that keeps failing to create.
+pub const MAX_LAUNCH_ATTEMPTS: u32 = 4;
+
+/// Parse the launch attempt from [`LAUNCH_ATTEMPT_ENV`]; missing, invalid, or
+/// zero values mean this is the first attempt.
+pub fn parse_launch_attempt(value: Option<&str>) -> u32 {
+    value
+        .and_then(|raw| raw.trim().parse::<u32>().ok())
+        .filter(|attempt| *attempt > 0)
+        .unwrap_or(1)
+}
+
+/// What to do after launch `attempt` failed to create its main window.
+///
+/// On Windows, WebView2 creation fails (e.g. `RPC_E_DISCONNECTED`) when the
+/// new instance attaches to the shared browser process of a just-closed
+/// instance that is still shutting down. Tauri only logs that failure and
+/// keeps the `main` label registered, so the window cannot be rebuilt
+/// in-process; the recovery is a fresh process after a backoff (1s, 2s, 4s).
+/// Returns `Some((next_attempt, delay))`, or `None` once attempts run out.
+pub fn relaunch_plan(attempt: u32) -> Option<(u32, Duration)> {
+    if attempt >= MAX_LAUNCH_ATTEMPTS {
+        return None;
+    }
+    let delay = Duration::from_secs(1u64 << (attempt.max(1) - 1).min(10));
+    Some((attempt + 1, delay))
+}
 
 /// Extract the launch path (image or folder to open) from process arguments.
 ///

@@ -7,8 +7,11 @@
 //! verified manually.
 
 use imageareo_lib::menu::{ids, should_attach_native_menu, MenuAction, MENU_EVENT};
+use std::time::Duration;
+
 use imageareo_lib::startup::{
-    macos_app_bundle_path, parse_launch_path, LaunchPathBuffer, OPEN_PATH_EVENT,
+    macos_app_bundle_path, parse_launch_attempt, parse_launch_path, relaunch_plan,
+    LaunchPathBuffer, MAX_LAUNCH_ATTEMPTS, OPEN_PATH_EVENT,
 };
 
 #[test]
@@ -116,4 +119,26 @@ fn macos_app_bundle_path_resolves_from_bundled_executable() {
         macos_app_bundle_path(std::path::Path::new("/tmp/imageareo")),
         None
     );
+}
+
+#[test]
+fn parse_launch_attempt_defaults_to_the_first_attempt() {
+    assert_eq!(parse_launch_attempt(None), 1);
+    assert_eq!(parse_launch_attempt(Some("")), 1);
+    assert_eq!(parse_launch_attempt(Some("0")), 1);
+    assert_eq!(parse_launch_attempt(Some("-2")), 1);
+    assert_eq!(parse_launch_attempt(Some("two")), 1);
+    assert_eq!(parse_launch_attempt(Some(" 3 ")), 3);
+}
+
+#[test]
+fn relaunch_plan_backs_off_then_gives_up() {
+    assert_eq!(MAX_LAUNCH_ATTEMPTS, 4);
+    assert_eq!(relaunch_plan(1), Some((2, Duration::from_secs(1))));
+    assert_eq!(relaunch_plan(2), Some((3, Duration::from_secs(2))));
+    assert_eq!(relaunch_plan(3), Some((4, Duration::from_secs(4))));
+    assert_eq!(relaunch_plan(MAX_LAUNCH_ATTEMPTS), None);
+    assert_eq!(relaunch_plan(u32::MAX), None);
+    // A zero attempt (never produced by the parser) still yields a sane delay.
+    assert_eq!(relaunch_plan(0), Some((1, Duration::from_secs(1))));
 }
