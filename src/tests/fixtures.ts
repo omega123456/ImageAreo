@@ -95,6 +95,8 @@ export const IPC_FIXTURES: Record<string, IpcHandler> = {
   "plugin:process|relaunch": () => null,
 
   // --- ImageAreo application commands ---
+  log_frontend: () => null,
+  set_log_level: () => null,
   scan_folder: () => [
     {
       path: "/photos/img1.jpg",

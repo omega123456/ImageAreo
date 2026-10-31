@@ -13,6 +13,8 @@ export const IPC_COMMANDS = {
   revealInFileManager: "reveal_in_file_manager",
   readImageMetadata: "read_image_metadata",
   printCurrentView: "print_current_view",
+  logFrontend: "log_frontend",
+  setLogLevel: "set_log_level",
 } as const;
 
 /**
@@ -43,6 +45,23 @@ export const MENU_ACTIONS = {
 export type MenuAction = (typeof MENU_ACTIONS)[keyof typeof MENU_ACTIONS];
 
 export type SortOrder = "name" | "date";
+
+/** Minimum capture level of the backend logger (matches Rust `LogLevel`). */
+export type LogLevel = "error" | "warn" | "info" | "debug" | "trace";
+
+/** Levels the frontend logger emits (`trace` is backend-only). */
+export type FrontendLogLevel = "debug" | "info" | "warn" | "error";
+
+export interface LogFrontendRequest {
+  level: FrontendLogLevel;
+  message: string;
+  /** JSON-serialized context, appended to the logged message. */
+  details?: string;
+}
+
+export interface SetLogLevelRequest {
+  level: LogLevel;
+}
 
 export interface ImageEntry {
   path: string;

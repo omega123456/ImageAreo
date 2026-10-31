@@ -222,7 +222,6 @@ describe("ContextMenu", () => {
     ipc.override("reveal_in_file_manager", () => {
       throw new Error("reveal failed");
     });
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const canvas = renderWithImage("/photos/gone.jpg");
     await openMenu(canvas);
@@ -234,10 +233,15 @@ describe("ContextMenu", () => {
       screen.getByRole("menuitem", { name: /Reveal in Finder\/Explorer/ }),
     );
 
-    await waitFor(() => expect(errorSpy).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(ipc.calls("log_frontend")).toContainEqual(
+        expect.objectContaining({
+          level: "error",
+          message: "Context-menu action failed",
+        }),
+      ),
+    );
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-
-    errorSpy.mockRestore();
   });
 
   it("hover over an item updates the active index", async () => {

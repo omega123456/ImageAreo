@@ -5,10 +5,12 @@ import {
   copyImageToClipboard,
   decodeImage,
   generateThumbnail,
+  logFrontend,
   printCurrentView,
   readImageMetadata,
   revealInFileManager,
   scanFolder,
+  setLogLevel,
 } from "../lib/ipc";
 
 describe("IPC wrappers", () => {
@@ -49,6 +51,16 @@ describe("IPC wrappers", () => {
       height: 1,
       orientation: 1,
     });
+  });
+
+  it("forwards logger commands through the seam", async () => {
+    await logFrontend({ level: "warn", message: "failed", details: '{"a":1}' });
+    await setLogLevel({ level: "trace" });
+
+    expect(ipc.calls("log_frontend")).toEqual([
+      { level: "warn", message: "failed", details: '{"a":1}' },
+    ]);
+    expect(ipc.calls("set_log_level")).toEqual([{ level: "trace" }]);
   });
 
   it("reads image metadata through the seam and returns the default fixture", async () => {

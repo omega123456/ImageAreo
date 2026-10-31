@@ -73,6 +73,7 @@ e2e/                      # Playwright specs
 - **Format routing:** only `jpg/jpeg/png/gif/webp` are "native" (rendered via `convertFileSrc`). Every other supported format (avif, tif/tiff, bmp, ico, heic/heif, raw types, jxl) goes through the Rust `decode_image` command.
 - **Filmstrip:** hand-windowed horizontal carousel; no virtualization plugin dependency.
 - **Gallery settings:** a single `galleryDensity` setting replaces the old thumbnail count and size controls.
+- **Logging:** frontend code logs only via `src/lib/utils/log.ts` (no raw `console`; `src/tests/no-console.test.ts` enforces it); Rust uses the `log` macros. Daily files `imageareo-YYYY-MM-DD.log` live in `<app config dir>/logs` and are kept for 7 days; the level is the `logLevel` setting.
 - **Comments:** minimal — only where the *why* is non-obvious.
 - **Accessibility:** `aria-label` on all icon-only buttons; keyboard-operable menus; focus-trapped drawer; debounced `aria-live` for the zoom indicator.
 

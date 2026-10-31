@@ -154,6 +154,23 @@ describe("SettingsDrawer", () => {
     );
   });
 
+  it("changes the log level via the dropdown and applies it to the backend", async () => {
+    ui.openSettings();
+    render(SettingsDrawer, { props: { version: "1.0.0" } });
+
+    const level = screen.getByLabelText("Log level");
+    expect((level as HTMLSelectElement).value).toBe("info");
+    await fireEvent.change(level, { target: { value: "error" } });
+
+    await waitFor(() => expect(settings.logLevel).toBe("error"));
+    expect(ipc.calls("set_log_level")).toEqual([{ level: "error" }]);
+    await waitFor(() =>
+      expect(ipc.calls("plugin:store|set")).toContainEqual(
+        expect.objectContaining({ key: "logLevel", value: "error" }),
+      ),
+    );
+  });
+
   it("renders the file type checklist from the live association query", async () => {
     ipc.override("query_file_associations", () => [
       { ext: "jpg", isDefault: true },

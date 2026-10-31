@@ -10,6 +10,7 @@ import {
   type GenerateThumbnailRequest,
   type ImageEntry,
   type ImageMetadata,
+  type LogFrontendRequest,
   type OkResponse,
   type PrintCurrentViewRequest,
   DEFAULT_PRINT_REQUEST,
@@ -20,6 +21,7 @@ import {
   type SampleImageRequest,
   type ScanFolderRequest,
   type SetDefaultAssociationsRequest,
+  type SetLogLevelRequest,
   type Thumbnail,
 } from "./commands";
 
@@ -37,6 +39,22 @@ function invokeCommand<TResponse>(
  */
 export function frontendReady(): Promise<string | null> {
   return invokeCommand<string | null>(IPC_COMMANDS.frontendReady, {});
+}
+
+/** Forward a frontend log line to the backend's daily log file. */
+export function logFrontend(request: LogFrontendRequest): Promise<void> {
+  return invokeCommand<void>(
+    IPC_COMMANDS.logFrontend,
+    request as unknown as InvokeArgs,
+  );
+}
+
+/** Apply a new minimum log level to the running backend logger. */
+export function setLogLevel(request: SetLogLevelRequest): Promise<void> {
+  return invokeCommand<void>(
+    IPC_COMMANDS.setLogLevel,
+    request as unknown as InvokeArgs,
+  );
 }
 
 export function queryFileAssociations(): Promise<ExtAssociation[]> {

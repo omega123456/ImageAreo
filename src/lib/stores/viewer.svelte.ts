@@ -27,6 +27,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 
 import { decodeImage, peekDecodedImage, probeImage } from "../ipc";
 import type { DecodedImageWithUrl } from "../ipc";
+import { log } from "../utils/log";
 import {
   isNativeFormat,
   isRawFormat,
@@ -414,7 +415,7 @@ class ViewerStore {
       }
       // The preview is already shown, so a failed upgrade is non-fatal: keep the
       // preview rather than dropping to the error state.
-      console.warn(`RAW display upgrade failed for ${path}`, error);
+      log.warn("RAW display upgrade failed", { path, error });
     } finally {
       if (this.#isCurrentRequest(requestId, path)) {
         this.upgrading = false;
@@ -618,7 +619,7 @@ class ViewerStore {
       if (this.#isCurrentRequest(requestId, path)) {
         this.#sharperTierRequested = false;
       }
-      console.warn(`Sharper-tier upgrade failed for ${path}`, error);
+      log.warn("Sharper-tier upgrade failed", { path, error });
     } finally {
       this.#inFlightPaths.delete(path);
       if (this.#isCurrentRequest(requestId, path)) {
@@ -722,7 +723,7 @@ class ViewerStore {
         return;
       }
       this.enhanceError = true;
-      console.warn(`Enhance RAW decode failed for ${path}`, error);
+      log.warn("Enhance RAW decode failed", { path, error });
     } finally {
       this.#inFlightPaths.delete(path);
       if (this.#isCurrentRequest(requestId, path)) {

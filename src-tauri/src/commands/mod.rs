@@ -1,6 +1,7 @@
 pub mod associations_runtime;
 pub mod clipboard;
 pub mod clipboard_runtime;
+pub mod logging;
 pub mod print;
 pub mod print_runtime;
 pub mod reveal;
@@ -15,6 +16,7 @@ use crate::thumbnail;
 pub use associations_runtime::{query_file_associations, set_default_associations};
 pub use clipboard::validate_clipboard_file_path;
 pub use clipboard_runtime::copy_image_to_clipboard;
+pub use logging::{log_frontend, set_log_level};
 pub use print::PrintCommandError;
 pub use print_runtime::print_current_view;
 pub use reveal::validate_reveal_path;

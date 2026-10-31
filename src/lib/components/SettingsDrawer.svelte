@@ -13,7 +13,7 @@
   import { associations } from "../stores/associations.svelte";
   import { ui } from "../stores/ui.svelte";
   import { updater } from "../stores/updater.svelte";
-  import type { SortOrder } from "../ipc/commands";
+  import type { LogLevel, SortOrder } from "../ipc/commands";
 
   interface Props {
     /**
@@ -83,6 +83,14 @@
     { value: "small", label: "Small" },
     { value: "medium", label: "Medium" },
     { value: "large", label: "Large" },
+  ];
+
+  const logLevelOptions: { value: LogLevel; label: string }[] = [
+    { value: "error", label: "Error" },
+    { value: "warn", label: "Warning" },
+    { value: "info", label: "Info" },
+    { value: "debug", label: "Debug" },
+    { value: "trace", label: "Trace" },
   ];
 
   let panel = $state<HTMLElement | null>(null);
@@ -158,6 +166,11 @@
     const value = (event.currentTarget as HTMLSelectElement).value as SortOrder;
     await settings.setSortOrder(value);
     await folder.reloadForSortOrder(value);
+  }
+
+  async function onLogLevelChange(event: Event): Promise<void> {
+    const value = (event.currentTarget as HTMLSelectElement).value as LogLevel;
+    await settings.setLogLevel(value);
   }
 
   function onAssociationToggle(event: Event): void {
@@ -312,6 +325,29 @@
             Apply
           {/if}
         </button>
+      </section>
+
+      <section class="flex flex-col gap-3">
+        <h3 class="text-xs font-semibold tracking-wider text-surface-500 uppercase">
+          Diagnostics
+        </h3>
+
+        <label class="flex items-center justify-between gap-2 text-sm">
+          <span>Log level</span>
+          <select
+            class="select w-28"
+            value={settings.logLevel}
+            onchange={onLogLevelChange}
+            aria-label="Log level"
+          >
+            {#each logLevelOptions as option (option.value)}
+              <option value={option.value}>{option.label}</option>
+            {/each}
+          </select>
+        </label>
+        <p class="text-sm text-surface-500">
+          Daily log files are kept for 7 days in the app's data folder.
+        </p>
       </section>
 
       <section class="flex flex-col gap-2">

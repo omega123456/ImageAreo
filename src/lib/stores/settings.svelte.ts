@@ -1,6 +1,7 @@
 import { LazyStore } from "@tauri-apps/plugin-store";
 
-import type { SortOrder } from "../ipc/commands";
+import { setLogLevel } from "../ipc";
+import type { LogLevel, SortOrder } from "../ipc/commands";
 
 export type ThemeSetting = "system" | "light" | "dark";
 
@@ -21,6 +22,7 @@ export interface SettingsSnapshot {
   theme: ThemeSetting;
   galleryDensity: GalleryDensity;
   sortOrder: SortOrder;
+  logLevel: LogLevel;
 }
 
 const STORE_PATH = "settings.json";
@@ -29,13 +31,24 @@ const STORE_KEYS = {
   theme: "theme",
   galleryDensity: "galleryDensity",
   sortOrder: "sortOrder",
+  // Also read by the Rust logger at launch (`logging::SETTINGS_LOG_LEVEL_KEY`).
+  logLevel: "logLevel",
 } as const;
 
 export const DEFAULT_SETTINGS: SettingsSnapshot = {
   theme: "system",
   galleryDensity: "large",
   sortOrder: "name",
+  logLevel: "info",
 };
+
+export const LOG_LEVELS: readonly LogLevel[] = [
+  "error",
+  "warn",
+  "info",
+  "debug",
+  "trace",
+];
 
 function isThemeSetting(value: unknown): value is ThemeSetting {
   return value === "system" || value === "light" || value === "dark";
@@ -49,10 +62,15 @@ function isSortOrder(value: unknown): value is SortOrder {
   return value === "name" || value === "date";
 }
 
+export function isLogLevel(value: unknown): value is LogLevel {
+  return (LOG_LEVELS as readonly unknown[]).includes(value);
+}
+
 class SettingsStore {
   theme = $state<ThemeSetting>(DEFAULT_SETTINGS.theme);
   galleryDensity = $state<GalleryDensity>(DEFAULT_SETTINGS.galleryDensity);
   sortOrder = $state<SortOrder>(DEFAULT_SETTINGS.sortOrder);
+  logLevel = $state<LogLevel>(DEFAULT_SETTINGS.logLevel);
   isReady = $state<boolean>(false);
   loadError = $state<string | null>(null);
 
@@ -97,6 +115,7 @@ class SettingsStore {
       const theme = await this.#store.get(STORE_KEYS.theme);
       const galleryDensity = await this.#store.get(STORE_KEYS.galleryDensity);
       const sortOrder = await this.#store.get(STORE_KEYS.sortOrder);
+      const logLevel = await this.#store.get(STORE_KEYS.logLevel);
 
       this.theme = isThemeSetting(theme) ? theme : DEFAULT_SETTINGS.theme;
       this.galleryDensity = isGalleryDensity(galleryDensity)
@@ -105,6 +124,7 @@ class SettingsStore {
       this.sortOrder = isSortOrder(sortOrder)
         ? sortOrder
         : DEFAULT_SETTINGS.sortOrder;
+      this.logLevel = isLogLevel(logLevel) ? logLevel : DEFAULT_SETTINGS.logLevel;
     } catch (error) {
       this.#store = null;
       this.loadError =
@@ -135,11 +155,23 @@ class SettingsStore {
     await this.#persist(STORE_KEYS.sortOrder, sortOrder);
   }
 
+  /**
+   * Apply the level to the running backend logger and persist it; the backend
+   * reads the persisted value from `settings.json` on the next launch.
+   */
+  async setLogLevel(logLevel: LogLevel): Promise<void> {
+    const next = isLogLevel(logLevel) ? logLevel : this.logLevel;
+    this.logLevel = next;
+    await setLogLevel({ level: next });
+    await this.#persist(STORE_KEYS.logLevel, next);
+  }
+
   snapshot(): SettingsSnapshot {
     return {
       theme: this.theme,
       galleryDensity: this.galleryDensity,
       sortOrder: this.sortOrder,
+      logLevel: this.logLevel,
     };
   }
 
@@ -176,6 +208,7 @@ class SettingsStore {
     this.theme = snapshot.theme;
     this.galleryDensity = snapshot.galleryDensity;
     this.sortOrder = snapshot.sortOrder;
+    this.logLevel = snapshot.logLevel;
   }
 
   #setupThemeListener(): void {

@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ipc } from "./ipc-mock";
 import {
   DENSITY_DIMENSIONS,
+  isLogLevel,
+  LOG_LEVELS,
   settings,
 } from "../lib/stores/settings.svelte";
 
@@ -69,6 +71,7 @@ describe("settings store", () => {
       ["theme", "system"],
       ["galleryDensity", "small"],
       ["sortOrder", "date"],
+      ["logLevel", "debug"],
     ]);
 
     ipc.override("plugin:store|get", (args) => {
@@ -81,6 +84,7 @@ describe("settings store", () => {
     expect(settings.theme).toBe("system");
     expect(settings.galleryDensity).toBe("small");
     expect(settings.sortOrder).toBe("date");
+    expect(settings.logLevel).toBe("debug");
     expect(settings.resolvedTheme).toBe("dark");
     expect(document.documentElement.style.colorScheme).toBe("dark");
     expect(document.documentElement.dataset.appearance).toBe("dark");
@@ -98,6 +102,41 @@ describe("settings store", () => {
     await settings.initialize();
 
     expect(settings.galleryDensity).toBe("large");
+  });
+
+  it("defaults the log level to info and rejects unknown persisted levels", async () => {
+    installMatchMedia(false);
+    ipc.override("plugin:store|get", (args) =>
+      args?.key === "logLevel" ? ["loud", true] : [undefined, false],
+    );
+
+    await settings.initialize();
+
+    expect(settings.logLevel).toBe("info");
+    expect(settings.snapshot().logLevel).toBe("info");
+    expect(isLogLevel("trace")).toBe(true);
+    expect(isLogLevel("loud")).toBe(false);
+    expect(LOG_LEVELS).toEqual(["error", "warn", "info", "debug", "trace"]);
+  });
+
+  it("applies a log level to the backend and persists it", async () => {
+    installMatchMedia(false);
+    await settings.initialize();
+
+    await settings.setLogLevel("debug");
+    // An invalid value keeps the current level.
+    await settings.setLogLevel("loud" as never);
+
+    expect(settings.logLevel).toBe("debug");
+    expect(ipc.calls("set_log_level")).toEqual([
+      { level: "debug" },
+      { level: "debug" },
+    ]);
+    expect(ipc.calls("plugin:store|set")).toContainEqual({
+      rid: 1,
+      key: "logLevel",
+      value: "debug",
+    });
   });
 
   it("persists writes through the store plugin", async () => {

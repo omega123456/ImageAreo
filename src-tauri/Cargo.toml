@@ -52,6 +52,9 @@ image = { version = "0.25.10", default-features = false, features = ["avif", "bm
 # for anything it does not recognize.
 imagesize = "0.13"
 jxl-oxide = "0.12.5"
+# Facade for the daily-file logger in `src/logging` (also captures records
+# emitted by tauri/wry/tao). Already in the tree transitively.
+log = { version = "~0.4.33", features = ["std"] }
 resvg = "0.48"
 # Single-flight coalescing for decode-class work. `moka::future::Cache::get_with`
 # runs the leader once and joins duplicate/returning callers to the same in-flight
@@ -73,8 +76,9 @@ jpeg-decoder = "0.3.2"
 # Pinned: time 0.3.48 / time-macros 0.2.28 fail to compile under rustc 1.95 with a
 # spurious E0119 (conflicting `From<HourBase>` impl) inside tauri-utils & cookie.
 # 0.3.47 is the lowest the tree allows (plist requires >= 0.3.47). Remove once a
-# fixed time release lands. Transitive-only dep, pinned here to hold the lockfile.
-time = "=0.3.47"
+# fixed time release lands. Pinned here to hold the lockfile; also used directly by
+# `src/logging`, where `local-offset` lets the logger stamp lines in local time.
+time = { version = "=0.3.47", features = ["local-offset"] }
 # Pinned: alloc-no-stdlib 3.0.0 was published, and cargo greedily picks it for
 # alloc-stdlib 0.2.3 and brotli-decompressor 5.0.2 (whose ranges allow <4). But
 # brotli 8.0.3 (pulled transitively by tauri) requires alloc-no-stdlib ^2.0, so

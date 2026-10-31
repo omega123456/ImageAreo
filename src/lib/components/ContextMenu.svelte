@@ -6,6 +6,7 @@
   import { copyImageToClipboard, revealInFileManager } from "../ipc";
   import { print } from "../stores/print.svelte";
   import { icons, ICON_SIZE, ICON_WEIGHT } from "../icons";
+  import { log } from "../utils/log";
   import type { Component } from "svelte";
 
   interface MenuItem {
@@ -111,7 +112,7 @@
     try {
       await item.run();
     } catch (error) {
-      console.error(`Context-menu action "${item.id}" failed:`, error);
+      log.error("Context-menu action failed", { action: item.id, error });
     }
   }
 

@@ -2,6 +2,13 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { viewer } from "../lib/stores/viewer.svelte";
 import { ipc } from "./ipc-mock";
 
+/** Messages of the warn-level lines forwarded to the backend logger. */
+function loggedWarnings(): string[] {
+  return (ipc.calls("log_frontend") as { level: string; message: string }[])
+    .filter((call) => call.level === "warn")
+    .map((call) => call.message);
+}
+
 vi.mock("@tauri-apps/api/core", async () => {
   const actual = await vi.importActual<typeof import("@tauri-apps/api/core")>(
     "@tauri-apps/api/core",
@@ -264,7 +271,6 @@ describe("viewer store", () => {
   });
 
   it("keeps the RAW preview visible when the background display decode fails", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     ipc.override("decode_image", (args) => {
       if ((args as { quality?: string }).quality === "preview") {
         return {
@@ -285,7 +291,9 @@ describe("viewer store", () => {
     expect(viewer.naturalWidth).toBe(640);
     expect(viewer.naturalHeight).toBe(480);
     expect(viewer.enhanceAvailable).toBe(false);
-    await vi.waitFor(() => expect(warnSpy).toHaveBeenCalled());
+    await vi.waitFor(() =>
+      expect(loggedWarnings()).toContain("RAW display upgrade failed"),
+    );
   });
 
   it("flags upgrading while the display RAW decode runs and clears it when it resolves", async () => {
@@ -370,7 +378,6 @@ describe("viewer store", () => {
   });
 
   it("clears the upgrading flag when the background display decode fails", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     ipc.override("decode_image", (args) => {
       if ((args as { quality?: string }).quality === "preview") {
         return {
@@ -390,7 +397,9 @@ describe("viewer store", () => {
       expect(viewer.upgrading).toBe(false);
     });
     expect(viewer.source).toBe("asset:///tmp/imageareo-images/raw-preview.jpg");
-    expect(warnSpy).toHaveBeenCalled();
+    await vi.waitFor(() =>
+      expect(loggedWarnings()).toContain("RAW display upgrade failed"),
+    );
   });
 
   it("never flags upgrading or full-availability for a non-RAW backend format", async () => {
@@ -605,7 +614,6 @@ describe("viewer store", () => {
 
   it("requestEnhance() surfaces an error and keeps the display image on failure", async () => {
     await openRawToDisplay();
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     ipc.override("decode_image", () => {
       throw new Error("enhance decode failed");
     });
@@ -616,7 +624,9 @@ describe("viewer store", () => {
     expect(viewer.enhanced).toBe(false);
     expect(viewer.enhancing).toBe(false);
     expect(viewer.source).toBe("asset:///tmp/imageareo-images/raw-display.jpg");
-    expect(warnSpy).toHaveBeenCalled();
+    await vi.waitFor(() =>
+      expect(loggedWarnings()).toContain("Enhance RAW decode failed"),
+    );
   });
 
   it("requestEnhance() does nothing when enhance is not available", async () => {

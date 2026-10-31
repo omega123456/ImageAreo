@@ -3,6 +3,7 @@ pub mod cache_dirs;
 pub mod commands;
 pub mod folder;
 pub mod image;
+pub mod logging;
 pub mod menu;
 pub mod scheduler;
 pub mod startup;
@@ -44,6 +45,7 @@ fn spawn_macos_new_instance(path: &str) -> bool {
 /// `startup` module); the command body itself is a thin managed-state accessor.
 #[tauri::command]
 fn frontend_ready(buffer: tauri::State<'_, LaunchPathBuffer>) -> Option<String> {
+    log::info!(target: "startup", "frontend ready");
     buffer.mark_ready()
 }
 
@@ -74,6 +76,30 @@ fn prevent_default() -> tauri::plugin::TauriPlugin<tauri::Wry> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Install the logger before anything else so a launch that hangs or dies
+    // before its window appears still logs the last stage it reached. The local
+    // offset must be read now, while the process is still single-threaded.
+    let config_dir = logging::config_dir();
+    let local_offset = time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC);
+    let logger = logging::FileLogger::new(
+        &logging::log_dir(config_dir.as_deref()),
+        logging::initial_level(config_dir.as_deref()),
+        local_offset,
+    )
+    .ok();
+    if let Some(logger) = &logger {
+        logging::logger::install_global(std::sync::Arc::clone(logger));
+    }
+    logging::logger::install_panic_hook();
+    log::info!(
+        target: "startup",
+        "launch v{} os={} args={:?} cwd={:?}",
+        env!("CARGO_PKG_VERSION"),
+        std::env::consts::OS,
+        std::env::args_os().collect::<Vec<_>>(),
+        std::env::current_dir().ok()
+    );
+
     // NOTE: the single-instance plugin is intentionally NOT registered so that
     // multiple ImageAreo instances can run with independent folder contexts.
     // On Windows a second launch spawns a new process naturally. On macOS,
@@ -100,7 +126,20 @@ pub fn run() {
         // Relaunch into the freshly installed update (used by the updater flow).
         .plugin(tauri_plugin_process::init())
         .manage(launch_buffer)
+        .manage(logging::LoggingState { logger })
+        .on_page_load(|webview, payload| {
+            log::info!(
+                target: "startup",
+                "page load {:?} label={} url={}",
+                payload.event(),
+                webview.label(),
+                payload.url()
+            );
+        })
         .setup(|app| {
+            // Tauri builds the config windows (window + WebView2/WKWebView)
+            // right before calling this hook.
+            log::info!(target: "startup", "setup: main window and webview created");
             // The decode scheduler spawns per-class dispatcher tasks on the Tauri
             // async runtime, so it must be constructed inside `setup` (which runs
             // within the runtime) rather than during builder configuration.
@@ -135,6 +174,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             frontend_ready,
+            commands::logging::log_frontend,
+            commands::logging::set_log_level,
             commands::associations_runtime::query_file_associations,
             commands::associations_runtime::set_default_associations,
             commands::scan_folder,
@@ -150,12 +191,23 @@ pub fn run() {
             commands::print_runtime::print_current_view
         ])
         .build(tauri::generate_context!())
+        .inspect(|_| log::info!(target: "startup", "tauri app built (plugins initialized)"))
         .expect("error while building tauri application")
         // macOS delivers file-association opens via the Opened event. Cold
         // launches buffer the path for this process; warm launches spawn a new
         // app instance because Finder routes document opens to the running app.
         // (OS hookup — coverage-excluded.)
         .run(|app, event| {
+            match &event {
+                tauri::RunEvent::Ready => {
+                    log::info!(target: "startup", "event loop ready (setup complete)")
+                }
+                tauri::RunEvent::ExitRequested { code, .. } => {
+                    log::info!(target: "startup", "exit requested code={code:?}")
+                }
+                tauri::RunEvent::Exit => log::info!(target: "startup", "exit"),
+                _ => {}
+            }
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Opened { urls } = &event {
                 use tauri::{Emitter, Manager};
