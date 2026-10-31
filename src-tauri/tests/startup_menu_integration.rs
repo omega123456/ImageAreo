@@ -6,13 +6,25 @@
 //! coverage-exclusion list (they require a real OS event loop) and are
 //! verified manually.
 
+use imageareo_lib::logging::APP_IDENTIFIER;
 use imageareo_lib::menu::{ids, should_attach_native_menu, MenuAction, MENU_EVENT};
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use imageareo_lib::startup::{
-    macos_app_bundle_path, parse_launch_attempt, parse_launch_path, relaunch_plan,
-    LaunchPathBuffer, MAX_LAUNCH_ATTEMPTS, OPEN_PATH_EVENT,
+    default_webview_data_dir, fallback_webview_data_dir, macos_app_bundle_path,
+    parse_launch_attempt, parse_launch_path, relaunch_args, relaunch_plan, webview_data_dir_in_use,
+    LaunchPathBuffer, MAX_LAUNCH_ATTEMPTS, OPEN_PATH_EVENT, WEBVIEW2_USER_DATA_FOLDER_ENV,
+    WEBVIEW_FALLBACK_SLOTS,
 };
+
+/// Simulate a WebView2 browser process owning `data_dir`.
+fn lock_webview_data_dir(data_dir: &Path) {
+    let ebwebview = data_dir.join("EBWebView");
+    std::fs::create_dir_all(&ebwebview).unwrap();
+    std::fs::write(ebwebview.join("lockfile"), b"").unwrap();
+}
 
 #[test]
 fn parse_launch_path_reads_first_non_flag_argument() {
@@ -141,4 +153,76 @@ fn relaunch_plan_backs_off_then_gives_up() {
     assert_eq!(relaunch_plan(u32::MAX), None);
     // A zero attempt (never produced by the parser) still yields a sane delay.
     assert_eq!(relaunch_plan(0), Some((1, Duration::from_secs(1))));
+}
+
+#[test]
+fn default_webview_data_dir_matches_tauris_local_data_folder() {
+    assert_eq!(WEBVIEW2_USER_DATA_FOLDER_ENV, "WEBVIEW2_USER_DATA_FOLDER");
+    assert_eq!(default_webview_data_dir(None), None);
+    assert_eq!(default_webview_data_dir(Some(OsString::new())), None);
+    assert_eq!(
+        default_webview_data_dir(Some(OsString::from("/users/omega/local"))),
+        Some(PathBuf::from("/users/omega/local").join(APP_IDENTIFIER))
+    );
+}
+
+#[test]
+fn webview_data_dir_is_in_use_only_while_its_lockfile_exists() {
+    let root = tempfile::tempdir().unwrap();
+    let data_dir = root.path().join("data");
+    assert!(!webview_data_dir_in_use(&data_dir));
+
+    std::fs::create_dir_all(data_dir.join("EBWebView")).unwrap();
+    assert!(!webview_data_dir_in_use(&data_dir));
+
+    lock_webview_data_dir(&data_dir);
+    assert!(webview_data_dir_in_use(&data_dir));
+}
+
+#[test]
+fn fallback_webview_data_dir_picks_the_first_unowned_slot() {
+    let root = tempfile::tempdir().unwrap();
+    let default_dir = root.path();
+    assert_eq!(
+        fallback_webview_data_dir(default_dir),
+        Some(default_dir.join("webview-fallback-1"))
+    );
+
+    // The shared folder being owned does not matter; owned slots are skipped.
+    lock_webview_data_dir(default_dir);
+    lock_webview_data_dir(&default_dir.join("webview-fallback-1"));
+    lock_webview_data_dir(&default_dir.join("webview-fallback-3"));
+    assert_eq!(
+        fallback_webview_data_dir(default_dir),
+        Some(default_dir.join("webview-fallback-2"))
+    );
+
+    for slot in 1..=WEBVIEW_FALLBACK_SLOTS {
+        lock_webview_data_dir(&default_dir.join(format!("webview-fallback-{slot}")));
+    }
+    assert_eq!(fallback_webview_data_dir(default_dir), None);
+}
+
+#[test]
+fn relaunch_args_resolve_relative_paths_against_the_old_cwd() {
+    let cwd = std::env::temp_dir().join("trip");
+    let absolute = cwd.join("b.png").into_os_string();
+    let args = [
+        OsString::from("shots/a.jpg"),
+        absolute.clone(),
+        OsString::from("--flag"),
+        OsString::from("-x"),
+        OsString::new(),
+    ];
+    assert_eq!(
+        relaunch_args(args, &cwd),
+        vec![
+            cwd.join("shots/a.jpg").into_os_string(),
+            absolute,
+            OsString::from("--flag"),
+            OsString::from("-x"),
+            OsString::new(),
+        ]
+    );
+    assert!(relaunch_args(Vec::<OsString>::new(), &cwd).is_empty());
 }

@@ -9,6 +9,10 @@ pub mod scheduler;
 pub mod startup;
 pub mod thumbnail;
 
+use std::path::Path;
+#[cfg(windows)]
+use std::path::PathBuf;
+
 use startup::LaunchPathBuffer;
 
 #[cfg(target_os = "macos")]
@@ -40,21 +44,36 @@ fn spawn_macos_new_instance(path: &str) -> bool {
 /// Recover a launch whose main window failed to create: relaunch this exe with
 /// the same arguments after a backoff, or give up once attempts run out. Never
 /// returns — a process without its window would otherwise linger forever.
+///
+/// The relaunch runs on a spare WebView2 data folder, so it starts its own
+/// browser process instead of attaching to the stuck one that owns the shared
+/// folder. It also starts from the executable's folder rather than the opened
+/// file's folder, the way Start-menu launches do.
 /// (OS process side effect — the retry policy is tested in `startup`.)
-fn recover_from_failed_main_window(attempt: u32) -> ! {
+fn recover_from_failed_main_window(attempt: u32, default_webview_data_dir: Option<&Path>) -> ! {
     match startup::relaunch_plan(attempt) {
         Some((next_attempt, delay)) => {
+            let webview_data_dir =
+                default_webview_data_dir.and_then(startup::fallback_webview_data_dir);
             log::warn!(
                 target: "startup",
-                "main window failed to create (attempt {attempt}/{}); relaunching in {delay:?}",
+                "main window failed to create (attempt {attempt}/{}); relaunching in {delay:?} with webview data dir {webview_data_dir:?}",
                 startup::MAX_LAUNCH_ATTEMPTS
             );
             std::thread::sleep(delay);
+            let cwd = std::env::current_dir().unwrap_or_default();
             let spawned = std::env::current_exe().and_then(|exe| {
-                std::process::Command::new(exe)
-                    .args(std::env::args_os().skip(1))
-                    .env(startup::LAUNCH_ATTEMPT_ENV, next_attempt.to_string())
-                    .spawn()
+                let mut command = std::process::Command::new(&exe);
+                command
+                    .args(startup::relaunch_args(std::env::args_os().skip(1), &cwd))
+                    .env(startup::LAUNCH_ATTEMPT_ENV, next_attempt.to_string());
+                if let Some(exe_dir) = exe.parent() {
+                    command.current_dir(exe_dir);
+                }
+                if let Some(dir) = &webview_data_dir {
+                    command.env(startup::WEBVIEW2_USER_DATA_FOLDER_ENV, dir);
+                }
+                command.spawn()
             });
             if let Err(err) = spawned {
                 log::error!(target: "startup", "relaunch failed: {err}");
@@ -66,6 +85,30 @@ fn recover_from_failed_main_window(attempt: u32) -> ! {
         ),
     }
     std::process::exit(1)
+}
+
+/// Log the WebView2 runtime and data folder this launch will use, and whether
+/// a browser process already owns that folder: a failed launch whose folder was
+/// already owned points at that process, not at this launch.
+#[cfg(windows)]
+fn log_webview2_environment(default_data_dir: Option<&Path>) {
+    use webview2_com::Microsoft::Web::WebView2::Win32::GetAvailableCoreWebView2BrowserVersionString;
+
+    let mut version = windows::core::PWSTR::null();
+    // SAFETY: on success the loader returns a CoTaskMem string, which
+    // `take_pwstr` copies and frees.
+    let runtime = unsafe {
+        GetAvailableCoreWebView2BrowserVersionString(windows::core::PCWSTR::null(), &mut version)
+    }
+    .map(|()| webview2_com::take_pwstr(version));
+    let data_dir = std::env::var_os(startup::WEBVIEW2_USER_DATA_FOLDER_ENV)
+        .map(PathBuf::from)
+        .or_else(|| default_data_dir.map(Path::to_path_buf));
+    log::info!(
+        target: "startup",
+        "webview2 runtime={runtime:?} data_dir={data_dir:?} in_use={}",
+        data_dir.as_deref().is_some_and(startup::webview_data_dir_in_use)
+    );
 }
 
 /// Signal that the frontend has registered its event listeners and is ready to
@@ -132,6 +175,13 @@ pub fn run() {
         std::env::args_os().collect::<Vec<_>>(),
         std::env::current_dir().ok()
     );
+    let default_webview_data_dir = if cfg!(windows) {
+        startup::default_webview_data_dir(std::env::var_os("LOCALAPPDATA"))
+    } else {
+        None
+    };
+    #[cfg(windows)]
+    log_webview2_environment(default_webview_data_dir.as_deref());
 
     // NOTE: the single-instance plugin is intentionally NOT registered so that
     // multiple ImageAreo instances can run with independent folder contexts.
@@ -179,9 +229,17 @@ pub fn run() {
                 .get_webview_window("main")
                 .is_some_and(|window| window.is_visible().is_ok());
             if !main_window_ok {
-                recover_from_failed_main_window(launch_attempt);
+                recover_from_failed_main_window(
+                    launch_attempt,
+                    default_webview_data_dir.as_deref(),
+                );
             }
             log::info!(target: "startup", "setup: main window and webview created");
+            if launch_attempt > 1 {
+                // The webview has read the data-folder override; keep it out of
+                // processes this instance starts (other WebView2 apps honor it too).
+                std::env::remove_var(startup::WEBVIEW2_USER_DATA_FOLDER_ENV);
+            }
             // The decode scheduler spawns per-class dispatcher tasks on the Tauri
             // async runtime, so it must be constructed inside `setup` (which runs
             // within the runtime) rather than during builder configuration.
